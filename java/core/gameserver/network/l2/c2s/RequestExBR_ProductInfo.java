@@ -1,0 +1,26 @@
+package core.gameserver.network.l2.c2s;
+
+import core.gameserver.model.Player;
+import core.gameserver.network.l2.s2c.ExBR_ProductInfo;
+
+public class RequestExBR_ProductInfo extends L2GameClientPacket
+{
+	private int _productId;
+
+	@Override
+	protected void readImpl()
+	{
+	 	_productId = readD();
+	}
+
+	@Override
+	protected void runImpl()
+	{
+		Player activeChar = getClient().getActiveChar();
+
+		if(activeChar == null)
+			return;
+
+		activeChar.sendPacket(new ExBR_ProductInfo(_productId));
+	}
+}

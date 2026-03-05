@@ -1,0 +1,24 @@
+package core.loginserver.network.gameservercon.lspackets;
+
+import core.loginserver.network.gameservercon.GameServer;
+import core.loginserver.network.gameservercon.SendablePacket;
+
+public class AuthResponse extends SendablePacket
+{
+	private int serverId;
+	private String name;
+
+	public AuthResponse(GameServer gs)
+	{
+		serverId = gs.getId();
+		name = gs.getName();
+	}
+
+	@Override
+	protected void writeImpl()
+	{
+		writeC(0x00);
+		writeC(serverId);
+		writeS(name);
+	}
+}
