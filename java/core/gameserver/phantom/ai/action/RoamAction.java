@@ -16,9 +16,10 @@ public class RoamAction implements PhantomAction {
 
     @Override
     public void run(PhantomContext ctx) {
-        var r = ThreadLocalRandom.current();
-        int dx = r.nextInt(-ctx.bot.spot.radius, ctx.bot.spot.radius + 1);
-        int dy = r.nextInt(-ctx.bot.spot.radius, ctx.bot.spot.radius + 1);
+		ThreadLocalRandom r = ThreadLocalRandom.current();
+		int span = ctx.bot.spot.radius * 2 + 1;
+		int dx = r.nextInt(span) - ctx.bot.spot.radius;
+		int dy = r.nextInt(span) - ctx.bot.spot.radius;
         PhantomAdapter.moveTo(ctx.actor,
                 PhantomAdapter.loc(ctx.bot.spot.centerX + dx, ctx.bot.spot.centerY + dy, ctx.bot.spot.centerZ));
     }

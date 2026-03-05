@@ -6,11 +6,15 @@ import  core.gameserver.phantom.io.ProfileParser;
 import  core.gameserver.phantom.io.SpotParser;
 import  core.gameserver.phantom.model.PhantomProfile;
 import  core.gameserver.phantom.model.PhantomSpot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class PhantomWorld {
+    private static final Logger _log = LoggerFactory.getLogger(PhantomWorld.class);
+
     private static final PhantomWorld INSTANCE = new PhantomWorld();
     public static PhantomWorld getInstance() { return INSTANCE; }
 
@@ -29,26 +33,30 @@ public final class PhantomWorld {
         spots.addAll(SpotParser.load("config/phantom/phantom_spots.ini"));
         profiles.addAll(ProfileParser.load("config/phantom/phantom_profiles.ini"));
 
-        if (spots.isEmpty()) throw new IllegalStateException("No phantom spots loaded");
-        if (profiles.isEmpty()) throw new IllegalStateException("No phantom profiles loaded");
+        if (spots.isEmpty()) {
+			_log.warn("No phantom spots loaded from config/phantom/phantom_spots.ini");
+		}
+        if (profiles.isEmpty()) {
+			_log.warn("No phantom profiles loaded from config/phantom/phantom_profiles.ini");
+		}
     }
 
     // ---- ВАЖНО: тут ты подключаешь свою реальную фабрику фантомов ----
     public Player spawnPhantomActor() {
-        // Здесь должен быть реальный спавн Player.
-        // Например: PhantomFactory.createAndSpawn(profile, spot)
-        // Сейчас кидаю исключение, чтобы ты случайно не запустил “пустышку”.
-        throw new UnsupportedOperationException("Implement spawnPhantomActor() to create/spawn Player");
+        _log.warn("spawnPhantomActor() is not bound to First Team phantom factory yet; returning null fallback");
+        return null;
     }
 
     public PhantomSpot pickSpotFor(Player p) {
-        int lvl = p.getLevel();
+        int lvl = PhantomAdapter.level(p);
         // выбираем подходящие по уровню
         List<PhantomSpot> ok = new ArrayList<>();
         for (PhantomSpot s : spots) {
             if (lvl >= s.minLvl && lvl <= s.maxLvl) ok.add(s);
         }
         if (ok.isEmpty()) {
+			if(spots.isEmpty())
+				return null;
             return spots.get(ThreadLocalRandom.current().nextInt(spots.size()));
         }
         return ok.get(ThreadLocalRandom.current().nextInt(ok.size()));
@@ -59,7 +67,11 @@ public final class PhantomWorld {
         for (PhantomProfile pr : profiles) {
             if (level >= pr.minLvl && level <= pr.maxLvl) ok.add(pr);
         }
-        if (ok.isEmpty()) return profiles.get(0);
+        if (ok.isEmpty()) {
+			if(profiles.isEmpty())
+				return null;
+			return profiles.get(0);
+		}
         return ok.get(ThreadLocalRandom.current().nextInt(ok.size()));
     }
 }

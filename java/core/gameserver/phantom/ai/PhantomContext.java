@@ -2,7 +2,6 @@ package core.gameserver.phantom.ai;
 
 import core.gameserver.model.Creature;
 import core.gameserver.model.Player;
-import core.gameserver.phantom.PhantomSpot;
 import core.gameserver.phantom.model.PhantomBot;
 
 public final class PhantomContext {
@@ -22,6 +21,6 @@ public final class PhantomContext {
     }
 
     public static PhantomContext from(PhantomBot bot) {
-        return new PhantomContext(bot, (Player) bot.actor);
+        return new PhantomContext(bot, bot.actor);
     }
 }

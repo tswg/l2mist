@@ -1,28 +1,28 @@
 package core.gameserver.phantom.ai;
 
-import core.gameserver.phantom.AttackAction;
-import core.gameserver.phantom.FindTargetAction;
-import core.gameserver.phantom.PhantomAction;
-import core.gameserver.phantom.RetreatAction;
 import core.gameserver.phantom.model.PhantomBot;
 import core.gameserver.phantom.ai.action.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class PhantomBrain {
-    private final List<PhantomAction> actions = List.of(
-            new RetreatAction(),
-            new UsePotionsAction(),
-            new StuckFixAction(),
+	private final List<PhantomAction> actions = new ArrayList<PhantomAction>();
 
-            new FindTargetAction(),
+	public PhantomBrain()
+	{
+		actions.add(new RetreatAction());
+		actions.add(new UsePotionsAction());
+		actions.add(new StuckFixAction());
 
-            new UseShotsAction(),
-            new MoveToTargetAction(),
-            new AttackAction(),
+		actions.add(new FindTargetAction());
 
-            new RoamAction()
-    );
+		actions.add(new UseShotsAction());
+		actions.add(new MoveToTargetAction());
+		actions.add(new AttackAction());
+
+		actions.add(new RoamAction());
+	}
 
     public void tick(PhantomBot bot) {
         PhantomContext ctx = PhantomContext.from(bot);
