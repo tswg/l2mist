@@ -316,9 +316,21 @@ public class GameServer
 			_log.info(line);
 
 		MistWorldTeam.info();
-		if (PhantomConfig.ENABLED) {
-			PhantomManager.getInstance().init();
+		System.out.println("[PHANTOM] Loading phantom config before init...");
+		try
+		{
+			PhantomConfig.load("config/phantom/phantom.properties");
+			System.out.println("[PHANTOM] Phantom config loaded. ENABLED=" + PhantomConfig.ENABLED);
 		}
+		catch (Exception e)
+		{
+			PhantomConfig.ENABLED = false;
+			System.err.println("[PHANTOM][ERROR] Failed to load config/phantom/phantom.properties. Phantom module disabled.");
+			e.printStackTrace();
+		}
+
+		System.out.println("[PHANTOM] Calling PhantomManager.init()...");
+		PhantomManager.getInstance().init();
 	}
 
 	public GameServerListenerList getListeners()
