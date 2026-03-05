@@ -1,6 +1,7 @@
 package core.gameserver.phantom;
 
 import java.io.FileInputStream;
+import java.io.File;
 import java.util.Properties;
 
 public final class PhantomConfig {
@@ -40,11 +41,25 @@ public final class PhantomConfig {
     public static String ACCOUNT_NAME;
 
     public static void load(String path) {
+        File configFile = new File(path);
+        String absolutePath = configFile.getAbsolutePath();
+        boolean exists = configFile.exists() && configFile.isFile();
+        System.out.println("[PHANTOM] PhantomConfig.load path=" + absolutePath + " exists=" + exists);
+
+        if (!exists) {
+            ENABLED = false;
+            System.err.println("[PHANTOM][ERROR] phantom config not found: " + absolutePath + ". PhantomEnabled=false");
+            return;
+        }
+
         Properties p = new Properties();
-        try (FileInputStream fis = new FileInputStream(path)) {
+        try (FileInputStream fis = new FileInputStream(configFile)) {
             p.load(fis);
         } catch (Exception e) {
-            throw new RuntimeException("Cannot load " + path, e);
+            ENABLED = false;
+            System.err.println("[PHANTOM][ERROR] Cannot load phantom config: " + absolutePath);
+            e.printStackTrace();
+            return;
         }
 
         ENABLED = getBool(p, "PhantomEnabled", true);
@@ -78,6 +93,8 @@ public final class PhantomConfig {
         MIN_HP_POTION_RATIO = getDouble(p, "PhantomMinHpPotionRatio", 0.70);
         MIN_MP_POTION_RATIO = getDouble(p, "PhantomMinMpPotionRatio", 0.35);
         ACCOUNT_NAME = getStr(p, "PhantomAccountName", "phantom");
+
+        System.out.println("[PHANTOM] PhantomConfig loaded. PhantomEnabled=" + ENABLED);
     }
 
     private static String getStr(Properties p, String k, String def) {

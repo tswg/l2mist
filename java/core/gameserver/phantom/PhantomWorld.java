@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.io.File;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class PhantomWorld {
@@ -47,11 +48,37 @@ public final class PhantomWorld {
     }
 
     public void loadAll() {
-        PhantomConfig.load("config/phantom/phantom.properties");
+        System.out.println("[PHANTOM] PhantomWorld.loadAll start");
+
+        String spotsPath = "config/phantom/phantom_spots.ini";
+        String profilesPath = "config/phantom/phantom_profiles.ini";
+
+        File spotsFile = new File(spotsPath);
+        File profilesFile = new File(profilesPath);
+        boolean spotsExists = spotsFile.exists() && spotsFile.isFile();
+        boolean profilesExists = profilesFile.exists() && profilesFile.isFile();
+
+        if (!spotsExists) {
+            PhantomConfig.ENABLED = false;
+            System.err.println("[PHANTOM][ERROR] Phantom spots file not found: " + spotsFile.getAbsolutePath());
+        }
+        if (!profilesExists) {
+            PhantomConfig.ENABLED = false;
+            System.err.println("[PHANTOM][ERROR] Phantom profiles file not found: " + profilesFile.getAbsolutePath());
+        }
+
+        if (!PhantomConfig.ENABLED) {
+            System.err.println("[PHANTOM][ERROR] Phantom module disabled in PhantomWorld.loadAll due to config/files state.");
+            spots.clear();
+            profiles.clear();
+            spawner = null;
+            return;
+        }
+
         spots.clear();
         profiles.clear();
-        spots.addAll(SpotParser.load("config/phantom/phantom_spots.ini"));
-        profiles.addAll(ProfileParser.load("config/phantom/phantom_profiles.ini"));
+        spots.addAll(SpotParser.load(spotsPath));
+        profiles.addAll(ProfileParser.load(profilesPath));
 
         _log.info("PhantomWorld config loaded: spots={}, profiles={}", spots.size(), profiles.size());
 
@@ -64,6 +91,7 @@ public final class PhantomWorld {
 
         spawner = new PhantomSpawner();
         spawner.prepare();
+        System.out.println("[PHANTOM] PhantomWorld.loadAll done. spots=" + spots.size() + " profiles=" + profiles.size() + " candidates=" + spawner.candidatesCount());
     }
 
     public Player spawnPhantomActor(PhantomSpot spot) {

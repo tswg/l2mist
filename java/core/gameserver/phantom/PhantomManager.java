@@ -24,11 +24,18 @@ public final class PhantomManager {
     private PhantomManager() {}
 
     public void init() {
+        System.out.println("[PHANTOM] PhantomManager init start");
         PhantomWorld.getInstance().loadAll();
         if (!PhantomConfig.ENABLED) {
+            System.out.println("[PHANTOM] PhantomManager init aborted: PhantomEnabled=false");
             _log.info("PhantomManager disabled by config");
             return;
         }
+
+        System.out.println("[PHANTOM] PhantomManager world stats before spawn: spots=" + PhantomWorld.getInstance().spotsCount()
+                + " profiles=" + PhantomWorld.getInstance().profilesCount()
+                + " candidates=" + PhantomWorld.getInstance().candidatesCount());
+
         SpawnStats stats = spawnInitial();
 
         if (stats.created <= 0) {
