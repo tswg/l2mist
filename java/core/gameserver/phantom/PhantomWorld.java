@@ -21,10 +21,30 @@ public final class PhantomWorld {
     private final List<PhantomSpot> spots = new ArrayList<>();
     private final List<PhantomProfile> profiles = new ArrayList<>();
     private final PhantomBrain brain = new PhantomBrain();
+    private PhantomSpawner spawner;
 
     private PhantomWorld() {}
 
     public PhantomBrain brain() { return brain; }
+
+    public int spotsCount() { return spots.size(); }
+
+    public int profilesCount() { return profiles.size(); }
+
+    public int candidatesCount() { return spawner != null ? spawner.candidatesCount() : 0; }
+
+    public int pickRandomLevel() {
+        PhantomProfile p = pickAnyProfile();
+        if (p == null)
+            return 1;
+        return ThreadLocalRandom.current().nextInt(p.minLvl, p.maxLvl + 1);
+    }
+
+    private PhantomProfile pickAnyProfile() {
+        if (profiles.isEmpty())
+            return null;
+        return profiles.get(ThreadLocalRandom.current().nextInt(profiles.size()));
+    }
 
     public void loadAll() {
         PhantomConfig.load("config/phantom/phantom.properties");
@@ -33,22 +53,35 @@ public final class PhantomWorld {
         spots.addAll(SpotParser.load("config/phantom/phantom_spots.ini"));
         profiles.addAll(ProfileParser.load("config/phantom/phantom_profiles.ini"));
 
+        _log.info("PhantomWorld config loaded: spots={}, profiles={}", spots.size(), profiles.size());
+
         if (spots.isEmpty()) {
 			_log.warn("No phantom spots loaded from config/phantom/phantom_spots.ini");
 		}
         if (profiles.isEmpty()) {
 			_log.warn("No phantom profiles loaded from config/phantom/phantom_profiles.ini");
 		}
+
+        spawner = new PhantomSpawner();
+        spawner.prepare();
     }
 
-    // ---- ВАЖНО: тут ты подключаешь свою реальную фабрику фантомов ----
-    public Player spawnPhantomActor() {
-        _log.warn("spawnPhantomActor() is not bound to First Team phantom factory yet; returning null fallback");
-        return null;
+    public Player spawnPhantomActor(PhantomSpot spot) {
+        if (spawner == null)
+            throw new IllegalStateException("Phantom spawner is not prepared");
+        if (spot == null)
+            throw new IllegalArgumentException("Phantom spot is null");
+
+        PhantomProfile profile = pickProfileForLevel((spot.minLvl + spot.maxLvl) / 2);
+        return spawner.spawn(spot, profile);
     }
 
     public PhantomSpot pickSpotFor(Player p) {
         int lvl = PhantomAdapter.level(p);
+        return pickSpotForLevel(lvl);
+    }
+
+    public PhantomSpot pickSpotForLevel(int lvl) {
         // выбираем подходящие по уровню
         List<PhantomSpot> ok = new ArrayList<>();
         for (PhantomSpot s : spots) {

@@ -25,26 +25,56 @@ public final class PhantomManager {
 
     public void init() {
         PhantomWorld.getInstance().loadAll();
-        spawnInitial();
+        if (!PhantomConfig.ENABLED) {
+            _log.info("PhantomManager disabled by config");
+            return;
+        }
+        SpawnStats stats = spawnInitial();
+
+        if (stats.created <= 0) {
+            _log.error("PhantomManager is disabled: spawn failed for all planned phantoms. planned={} failed={}.", stats.planned, stats.failed);
+            return;
+        }
+
         schedule();
-		_log.info("PhantomManager initialized: active={}, idle={}, sleep={}", active.size(), idle.size(), sleep.size());
+		_log.info("PhantomManager initialized: spots={}, profiles={}, planned={}, created={}, failed={}, active={}, idle={}, sleep={}",
+				PhantomWorld.getInstance().spotsCount(),
+				PhantomWorld.getInstance().profilesCount(),
+				stats.planned,
+				stats.created,
+				stats.failed,
+				active.size(), idle.size(), sleep.size());
     }
 
-    private void spawnInitial() {
+    private SpawnStats spawnInitial() {
+        SpawnStats stats = new SpawnStats();
         int total = PhantomConfig.TOTAL_ONLINE;
+        int candidates = PhantomWorld.getInstance().candidatesCount();
+        if (candidates > 0 && total > candidates) {
+            _log.warn("Phantom requested count {} exceeds candidate pool {}. Limiting spawn plan.", total, candidates);
+            total = candidates;
+        }
         int activeCap = PhantomConfig.ACTIVE_CAP;
+        stats.planned = total;
 
         for (int i = 0; i < total; i++) {
-            Player p = PhantomWorld.getInstance().spawnPhantomActor();
-            if (p == null) {
-				_log.warn("Phantom spawn returned null, skip index={}", i);
-				continue;
-			}
-            PhantomSpot spot = PhantomWorld.getInstance().pickSpotFor(p);
+            PhantomSpot spot = PhantomWorld.getInstance().pickSpotForLevel(PhantomWorld.getInstance().pickRandomLevel());
             if (spot == null) {
-				_log.warn("No spot found for phantom={}, skip", p.getName());
+				stats.failed++;
+				_log.error("No spot found for phantom index={}", i);
 				continue;
 			}
+
+            Player p;
+            try {
+                p = PhantomWorld.getInstance().spawnPhantomActor(spot);
+            } catch (Throwable t) {
+				stats.failed++;
+                _log.error("Phantom spawn failed for index={} spot={}({})", i, spot.id, spot.name, t);
+                continue;
+            }
+
+            stats.created++;
 
             // стартовое размещение
             PhantomAdapter.moveTo(p, PhantomAdapter.loc(spot.centerX, spot.centerY, spot.centerZ));
@@ -59,6 +89,13 @@ public final class PhantomManager {
                 sleep.add(bot);
             }
         }
+        return stats;
+    }
+
+    private static final class SpawnStats {
+        int planned;
+        int created;
+        int failed;
     }
 
     private void schedule() {
