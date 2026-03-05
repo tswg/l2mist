@@ -13,7 +13,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Весь остальной phantom-код НЕ должен напрямую трогать Player/NpcInstance.
@@ -21,6 +25,9 @@ import java.util.List;
  */
 public final class PhantomAdapter {
 	private static final Logger _log = LoggerFactory.getLogger(PhantomAdapter.class);
+	private static final int LOS_TOP_N = 8;
+	private static final long LOS_CACHE_TTL_MS = 1500L;
+	private static final Map<Long, LosCacheEntry> LOS_CACHE = new ConcurrentHashMap<Long, LosCacheEntry>();
 
     private PhantomAdapter() {}
 
@@ -113,17 +120,86 @@ public final class PhantomAdapter {
 			return result;
 
 		List<NpcInstance> around = World.getAroundNpc(p, radius, 300);
+		List<NpcDistance> top = new ArrayList<NpcDistance>();
 		for(NpcInstance npc : around)
 		{
 			if(npc == null || npc.isDead() || !npc.isVisible())
 				continue;
 			if(!(npc.isMonster() || npc.isAttackable(p)))
 				continue;
-			if(!canSee(p, npc))
+
+			long d2 = distance2Dsq(p, npc);
+			if(d2 > (long) radius * radius)
 				continue;
-			result.add(npc);
+
+			top.add(new NpcDistance(npc, d2));
 		}
+
+		Collections.sort(top, new Comparator<NpcDistance>() {
+			@Override
+			public int compare(NpcDistance o1, NpcDistance o2) {
+				if (o1.d2 == o2.d2)
+					return 0;
+				return o1.d2 < o2.d2 ? -1 : 1;
+			}
+		});
+
+		int checks = Math.min(LOS_TOP_N, top.size());
+		for (int i = 0; i < checks; i++) {
+			NpcInstance npc = top.get(i).npc;
+			if (canSeeCached(p, npc))
+				result.add(npc);
+		}
+
 		return result;
+    }
+
+    private static long distance2Dsq(Player p, Creature t)
+    {
+		long dx = (long) p.getX() - t.getX();
+		long dy = (long) p.getY() - t.getY();
+		return dx * dx + dy * dy;
+    }
+
+    private static boolean canSeeCached(Player p, Creature t)
+    {
+		long now = System.currentTimeMillis();
+		long key = (((long) p.getObjectId()) << 32) | (t.getObjectId() & 0xffffffffL);
+		LosCacheEntry entry = LOS_CACHE.get(key);
+		if(entry != null && now <= entry.expiresAt)
+			return entry.canSee;
+
+		boolean canSee = canSee(p, t);
+		LOS_CACHE.put(key, new LosCacheEntry(canSee, now + LOS_CACHE_TTL_MS));
+
+		if (LOS_CACHE.size() > 50000)
+			LOS_CACHE.clear();
+
+		return canSee;
+    }
+
+    private static final class NpcDistance
+    {
+		private final NpcInstance npc;
+		private final long d2;
+
+		private NpcDistance(NpcInstance npc, long d2)
+		{
+			this.npc = npc;
+			this.d2 = d2;
+		}
+    }
+
+    private static final class LosCacheEntry
+    {
+		private final boolean canSee;
+		private final long expiresAt;
+
+		private LosCacheEntry(boolean canSee, long expiresAt)
+		{
+			this.canSee = canSee;
+			this.expiresAt = expiresAt;
+		}
     }
 
     public static boolean useItem(Player p, int itemId) {

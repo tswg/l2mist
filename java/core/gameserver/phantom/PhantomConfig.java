@@ -37,6 +37,7 @@ public final class PhantomConfig {
 
     public static int STUCK_CHECK_SEC;
     public static boolean STUCK_TELEPORT;
+    public static String ACCOUNT_NAME;
 
     public static void load(String path) {
         Properties p = new Properties();
@@ -76,6 +77,12 @@ public final class PhantomConfig {
 
         MIN_HP_POTION_RATIO = getDouble(p, "PhantomMinHpPotionRatio", 0.70);
         MIN_MP_POTION_RATIO = getDouble(p, "PhantomMinMpPotionRatio", 0.35);
+        ACCOUNT_NAME = getStr(p, "PhantomAccountName", "phantom");
+    }
+
+    private static String getStr(Properties p, String k, String def) {
+        String v = p.getProperty(k);
+        return (v == null) ? def : v.trim();
     }
 
     private static int getInt(Properties p, String k, int def) {
