@@ -2,7 +2,9 @@ package core.gameserver.phantom.io;
 
 import core.gameserver.phantom.model.PhantomSpot;
 
-import java.nio.file.*;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 
 public final class SpotParser {
@@ -10,7 +12,7 @@ public final class SpotParser {
 
     public static List<PhantomSpot> load(String path) {
         try {
-            List<String> lines = Files.readAllLines(Path.of(path));
+            List<String> lines = Files.readAllLines(Paths.get(path), Charset.forName("UTF-8"));
             List<PhantomSpot> spots = new ArrayList<>();
 
             for (String raw : lines) {

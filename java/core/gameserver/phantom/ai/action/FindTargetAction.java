@@ -1,13 +1,14 @@
 package core.gameserver.phantom.ai.action;
 
 import core.gameserver.phantom.PhantomConfig;
+import core.gameserver.phantom.PhantomAdapter;
 import core.gameserver.phantom.ai.PhantomContext;
 import core.gameserver.phantom.ai.target.Targeting;
 
 public class FindTargetAction implements PhantomAction {
     @Override
     public boolean canRun(PhantomContext ctx) {
-        return ctx.target == null || ctx.target.isDead() || !ctx.target.isVisible();
+        return ctx.target == null || PhantomAdapter.isDead(ctx.target) || !PhantomAdapter.isVisible(ctx.target);
     }
 
     @Override

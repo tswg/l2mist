@@ -10,7 +10,7 @@ public class UseShotsAction implements PhantomAction {
     @Override
     public boolean canRun(PhantomContext ctx) {
         if (!PhantomConfig.USE_SHOTS) return false;
-        if (ctx.target == null || ctx.target.isDead()) return false;
+        if (ctx.target == null || PhantomAdapter.isDead(ctx.target)) return false;
 
         long now = System.currentTimeMillis();
         if (now - ctx.bot.lastShotsTs < PhantomConfig.SHOTS_COOLDOWN_MS) return false;

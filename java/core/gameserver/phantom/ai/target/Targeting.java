@@ -18,7 +18,7 @@ public final class Targeting {
         for (NpcInstance n : mobs) {
             if (!PhantomAdapter.isValidFarmTarget(p, n)) continue;
 
-            double d = p.distance3D(n);
+            double d = PhantomAdapter.dist3D(p, n);
             if (d < 1) d = 1;
 
             // скоринг: ближе = лучше, можно добавить “не в бою”, “не в пачке” и т.д.

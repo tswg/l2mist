@@ -1,15 +1,19 @@
 package core.gameserver.phantom;
 
-import core.gameserver.ThreadPoolManager; // <-- поправь импорт под свою сборку
+import core.gameserver.ThreadPoolManager;
 import core.gameserver.model.Player;
-import core.gameserver.phantom.ai.PhantomContext;
-import core.gameserver.phantom.model.*;
+import core.gameserver.phantom.model.PhantomBot;
+import core.gameserver.phantom.model.PhantomSpot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class PhantomManager {
+	private static final Logger _log = LoggerFactory.getLogger(PhantomManager.class);
+
     private static final PhantomManager INSTANCE = new PhantomManager();
     public static PhantomManager getInstance() { return INSTANCE; }
 
@@ -23,6 +27,7 @@ public final class PhantomManager {
         PhantomWorld.getInstance().loadAll();
         spawnInitial();
         schedule();
+		_log.info("PhantomManager initialized: active={}, idle={}, sleep={}", active.size(), idle.size(), sleep.size());
     }
 
     private void spawnInitial() {
@@ -31,7 +36,15 @@ public final class PhantomManager {
 
         for (int i = 0; i < total; i++) {
             Player p = PhantomWorld.getInstance().spawnPhantomActor();
+            if (p == null) {
+				_log.warn("Phantom spawn returned null, skip index={}", i);
+				continue;
+			}
             PhantomSpot spot = PhantomWorld.getInstance().pickSpotFor(p);
+            if (spot == null) {
+				_log.warn("No spot found for phantom={}, skip", p.getName());
+				continue;
+			}
 
             // стартовое размещение
             PhantomAdapter.moveTo(p, PhantomAdapter.loc(spot.centerX, spot.centerY, spot.centerZ));
@@ -50,19 +63,47 @@ public final class PhantomManager {
 
     private void schedule() {
         ThreadPoolManager.getInstance().scheduleAtFixedRate(
-                () -> tickQueue(active, 30),
+                new Runnable()
+                {
+                	@Override
+                	public void run()
+                	{
+                		tickQueue(active, 30);
+                	}
+                },
                 1000, PhantomConfig.TICK_ACTIVE
         );
         ThreadPoolManager.getInstance().scheduleAtFixedRate(
-                () -> tickQueue(idle, 30),
+                new Runnable()
+                {
+                	@Override
+                	public void run()
+                	{
+                		tickQueue(idle, 30);
+                	}
+                },
                 1000, PhantomConfig.TICK_IDLE
         );
         ThreadPoolManager.getInstance().scheduleAtFixedRate(
-                () -> tickQueue(sleep, 60),
+                new Runnable()
+                {
+                	@Override
+                	public void run()
+                	{
+                		tickQueue(sleep, 60);
+                	}
+                },
                 1000, PhantomConfig.TICK_SLEEP
         );
         ThreadPoolManager.getInstance().scheduleAtFixedRate(
-                this::rebalanceActiveCap,
+                new Runnable()
+                {
+                	@Override
+                	public void run()
+                	{
+                		rebalanceActiveCap();
+                	}
+                },
                 2000, 2000
         );
     }
@@ -76,8 +117,7 @@ public final class PhantomManager {
                 PhantomWorld.getInstance().brain().tick(bot);
                 updateState(bot);
             } catch (Throwable t) {
-                // не даём одному боту уронить поток
-                // лог вставишь свой
+				_log.warn("Phantom tick failed for actor={}", bot.actor != null ? bot.actor.getName() : "null", t);
             }
 
             requeue(bot);
@@ -85,11 +125,11 @@ public final class PhantomManager {
     }
 
     private void updateState(PhantomBot bot) {
-        Player p = (Player) bot.actor;
+        Player p = bot.actor;
 
         // если есть цель/в бою -> ACTIVE
-        boolean hasTarget = bot.target != null && !bot.target.isDead();
-        boolean inCombat = p.isInCombat(); // если метода нет — убери
+        boolean hasTarget = bot.target != null && !PhantomAdapter.isDead(bot.target);
+        boolean inCombat = PhantomAdapter.isInCombat(p);
 
         if (hasTarget || inCombat) {
             bot.state = PhantomState.ACTIVE;
@@ -110,11 +150,20 @@ public final class PhantomManager {
     }
 
     private void requeue(PhantomBot bot) {
-        switch (bot.state) {
-            case ACTIVE -> active.add(bot);
-            case IDLE -> idle.add(bot);
-            case SLEEP -> sleep.add(bot);
-        }
+		switch (bot.state)
+		{
+			case ACTIVE:
+				active.add(bot);
+				break;
+			case IDLE:
+				idle.add(bot);
+				break;
+			case SLEEP:
+				sleep.add(bot);
+				break;
+			default:
+				idle.add(bot);
+		}
     }
 
     private void rebalanceActiveCap() {

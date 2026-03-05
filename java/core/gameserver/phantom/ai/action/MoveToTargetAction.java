@@ -10,7 +10,7 @@ public class MoveToTargetAction implements PhantomAction {
     @Override
     public boolean canRun(PhantomContext ctx) {
         Creature t = ctx.target;
-        if (t == null || t.isDead()) return false;
+        if (t == null || PhantomAdapter.isDead(t)) return false;
 
         double d = PhantomAdapter.dist3D(ctx.actor, t);
         return d > 120 && d < PhantomConfig.PURSUIT_RANGE;
@@ -21,6 +21,6 @@ public class MoveToTargetAction implements PhantomAction {
 
     @Override
     public void run(PhantomContext ctx) {
-        PhantomAdapter.moveTo(ctx.actor, ctx.target.getLoc());
+		PhantomAdapter.moveTo(ctx.actor, PhantomAdapter.location(ctx.target));
     }
 }

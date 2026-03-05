@@ -65,6 +65,8 @@ import core.gameserver.network.authcomm.AuthServerCommunication;
 import core.gameserver.network.l2.GameClient;
 import core.gameserver.network.l2.GamePacketHandler;
 import core.gameserver.network.telnet.TelnetServer;
+import core.gameserver.phantom.PhantomConfig;
+import core.gameserver.phantom.PhantomManager;
 import core.gameserver.scripts.Scripts;
 import core.gameserver.tables.AugmentationData;
 import core.gameserver.tables.ClanTable;

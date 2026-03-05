@@ -14,7 +14,9 @@ public class StuckFixAction implements PhantomAction {
         long dt = now - ctx.bot.lastMoveTs;
         if (dt < PhantomConfig.STUCK_CHECK_SEC * 1000L) return false;
 
-        int x = p.getX(), y = p.getY(), z = p.getZ();
+        int x = PhantomAdapter.x(p);
+		int y = PhantomAdapter.y(p);
+		int z = PhantomAdapter.z(p);
         long dx = (long)x - ctx.bot.lastX;
         long dy = (long)y - ctx.bot.lastY;
         long dz = (long)z - ctx.bot.lastZ;
@@ -32,9 +34,9 @@ public class StuckFixAction implements PhantomAction {
         Player p = ctx.actor;
 
         // обновить трекинг
-        ctx.bot.lastX = p.getX();
-        ctx.bot.lastY = p.getY();
-        ctx.bot.lastZ = p.getZ();
+        ctx.bot.lastX = PhantomAdapter.x(p);
+        ctx.bot.lastY = PhantomAdapter.y(p);
+        ctx.bot.lastZ = PhantomAdapter.z(p);
         ctx.bot.lastMoveTs = System.currentTimeMillis();
 
         // “пинок”: вернуться ближе к центру спота (или телепорт если хочешь)
