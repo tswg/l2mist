@@ -13,7 +13,7 @@ public class AttackAction implements PhantomAction {
         double hp = PhantomAdapter.hpRatio(ctx.actor);
         if (hp <= PhantomConfig.RETREAT_AT_HP) return false;
         double d = PhantomAdapter.dist3D(ctx.actor, t);
-        return d <= 160;
+        return d <= 220;
     }
 
     @Override

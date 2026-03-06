@@ -89,10 +89,10 @@ public final class PhantomManager {
             PhantomBot bot = new PhantomBot(p, spot);
 
             if (i < activeCap) {
-                bot.state = PhantomState.ACTIVE;
+                switchState(bot, PhantomState.ACTIVE, "spawn-active-cap");
                 active.add(bot);
             } else {
-                bot.state = PhantomState.SLEEP;
+                switchState(bot, PhantomState.SLEEP, "spawn-over-cap");
                 sleep.add(bot);
             }
         }
@@ -160,6 +160,7 @@ public final class PhantomManager {
             try {
                 PhantomWorld.getInstance().brain().tick(bot);
                 updateState(bot);
+                diagnostic(bot);
             } catch (Throwable t) {
 				_log.warn("Phantom tick failed for actor={}", bot.actor != null ? bot.actor.getName() : "null", t);
             }
@@ -176,21 +177,61 @@ public final class PhantomManager {
         boolean inCombat = PhantomAdapter.isInCombat(p);
 
         if (hasTarget || inCombat) {
-            bot.state = PhantomState.ACTIVE;
+            bot.noTargetTicks = 0;
+            switchState(bot, PhantomState.ACTIVE, hasTarget ? "has-target" : "in-combat");
+            return;
+        }
+
+        bot.noTargetTicks++;
+        long inStateMs = System.currentTimeMillis() - bot.stateSinceTs;
+
+        // не усыпляем слишком рано: минимум несколько тиков без цели.
+        if (bot.state == PhantomState.ACTIVE && bot.noTargetTicks < 6) {
             return;
         }
 
         // если далеко от спота — IDLE (идёт домой)
         double distToSpot = PhantomAdapter.dist2D(p, bot.spot.centerX, bot.spot.centerY);
         if (distToSpot > PhantomConfig.LEASH_TO_SPOT * 0.6) {
-            bot.state = PhantomState.IDLE;
+            switchState(bot, PhantomState.IDLE, "return-to-spot");
             return;
         }
 
-        // иначе часть спит, часть idle (для “жизни”)
-        bot.state = ThreadLocalRandom.current().nextDouble() < 0.35
-                ? PhantomState.SLEEP
-                : PhantomState.IDLE;
+        // иначе часть спит, часть idle (для “жизни”), но не чаще чем раз в 5 секунд.
+        if (inStateMs < 5000L)
+            return;
+
+        switchState(bot, ThreadLocalRandom.current().nextDouble() < 0.35 ? PhantomState.SLEEP : PhantomState.IDLE, "no-target-random");
+    }
+
+
+    private void switchState(PhantomBot bot, PhantomState next, String reason) {
+        if (bot.state == next)
+            return;
+
+        PhantomState prev = bot.state;
+        bot.state = next;
+        bot.stateSinceTs = System.currentTimeMillis();
+
+        if (_log.isDebugEnabled())
+            _log.debug("[PHANTOM][state] actor={} {} -> {} reason={} noTargetTicks={}",
+                    bot.actor != null ? bot.actor.getName() : "null", prev, next, reason, bot.noTargetTicks);
+    }
+
+    private void diagnostic(PhantomBot bot) {
+        Player p = bot.actor;
+        if (p == null || !PhantomAdapter.shouldSampleDiagnostic())
+            return;
+
+        boolean hasTarget = bot.target != null && !PhantomAdapter.isDead(bot.target);
+        double targetDistance = hasTarget ? PhantomAdapter.dist3D(p, bot.target) : -1d;
+
+        _log.debug("[PHANTOM][diag] actor={} state={} hasTarget={} targetDistance={} intention={} isMoving={} isInCombat={} activeWeapon={}",
+                p.getName(), bot.state, hasTarget, targetDistance,
+                PhantomAdapter.currentIntention(p),
+                PhantomAdapter.isMoving(p),
+                PhantomAdapter.isInCombat(p),
+                PhantomAdapter.activeWeapon(p));
     }
 
     private void requeue(PhantomBot bot) {
@@ -219,7 +260,7 @@ public final class PhantomManager {
             PhantomBot b = idle.poll();
             if (b == null) b = sleep.poll();
             if (b == null) break;
-            b.state = PhantomState.ACTIVE;
+            switchState(b, PhantomState.ACTIVE, "rebalance-up");
             active.add(b);
         }
 
@@ -227,7 +268,7 @@ public final class PhantomManager {
         while (active.size() > cap) {
             PhantomBot b = active.poll();
             if (b == null) break;
-            b.state = PhantomState.IDLE;
+            switchState(b, PhantomState.IDLE, "rebalance-down");
             idle.add(b);
         }
     }

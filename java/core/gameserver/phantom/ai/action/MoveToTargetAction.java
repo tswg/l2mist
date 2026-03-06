@@ -1,6 +1,5 @@
 package core.gameserver.phantom.ai.action;
 
-import core.gameserver.model.Player;
 import core.gameserver.model.Creature;
 import core.gameserver.phantom.PhantomAdapter;
 import core.gameserver.phantom.PhantomConfig;
@@ -13,7 +12,7 @@ public class MoveToTargetAction implements PhantomAction {
         if (t == null || PhantomAdapter.isDead(t)) return false;
 
         double d = PhantomAdapter.dist3D(ctx.actor, t);
-        return d > 120 && d < PhantomConfig.PURSUIT_RANGE;
+        return d > 160 && d < PhantomConfig.PURSUIT_RANGE;
     }
 
     @Override
