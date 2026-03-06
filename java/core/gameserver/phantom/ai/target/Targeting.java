@@ -24,10 +24,16 @@ public final class Targeting {
 
         NpcInstance best = null;
         double bestScore = -1e18;
+        int valid = 0;
 
         for (NpcInstance n : mobs) {
-            if (!PhantomAdapter.isValidFarmTarget(p, n)) continue;
+            if (!PhantomAdapter.isValidFarmTarget(p, n)) {
+                if (_log.isDebugEnabled())
+                    _log.debug("[PHANTOM][targeting] actor={} reject npc={} reason=invalidFarmTarget", p.getName(), n != null ? n.getName() : "null");
+                continue;
+            }
 
+            valid++;
             double d = PhantomAdapter.dist3D(p, n);
             if (d < 1) d = 1;
 
@@ -39,11 +45,19 @@ public final class Targeting {
                 best = n;
             }
         }
-        if (_log.isInfoEnabled())
-            _log.info("[PHANTOM][Targeting] actor={} objectId={} selectedTarget={}",
-                    p != null ? p.getName() : "null",
-                    p != null ? p.getObjectId() : 0,
-                    best != null ? (best.getName() + "(" + best.getObjectId() + ")") : "null");
+
+        if (_log.isDebugEnabled()) {
+            _log.debug("[PHANTOM][targeting] actor={} around={} valid={} selected={} score={}",
+                    p.getName(), mobs.size(), valid, best != null ? best.getName() : "null", bestScore);
+        }
+
+        // safety: если после всех проверок цель не выбрана, но список есть — берем ближайшую первую
+        if (best == null && !mobs.isEmpty()) {
+            best = mobs.get(0);
+            if (_log.isDebugEnabled())
+                _log.debug("[PHANTOM][targeting] actor={} fallbackTarget={} cause=noBestFromFilter", p.getName(), best.getName());
+        }
+
         return best;
     }
 }
