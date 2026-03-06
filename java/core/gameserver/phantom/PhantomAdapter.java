@@ -151,6 +151,10 @@ public final class PhantomAdapter {
 				result.add(npc);
 		}
 
+		if (_log.isInfoEnabled())
+			_log.info("[PHANTOM][getAroundMonsters] actor={} objectId={} radius={} worldAround={} candidate={} visible={}",
+					p.getName(), p.getObjectId(), radius, around.size(), top.size(), result.size());
+
 		return result;
     }
 

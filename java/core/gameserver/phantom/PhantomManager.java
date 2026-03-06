@@ -61,7 +61,6 @@ public final class PhantomManager {
             _log.warn("Phantom requested count {} exceeds candidate pool {}. Limiting spawn plan.", total, candidates);
             total = candidates;
         }
-        int activeCap = PhantomConfig.ACTIVE_CAP;
         stats.planned = total;
 
         for (int i = 0; i < total; i++) {
@@ -88,13 +87,8 @@ public final class PhantomManager {
 
             PhantomBot bot = new PhantomBot(p, spot);
 
-            if (i < activeCap) {
-                bot.state = PhantomState.ACTIVE;
-                active.add(bot);
-            } else {
-                bot.state = PhantomState.SLEEP;
-                sleep.add(bot);
-            }
+            bot.state = PhantomState.ACTIVE;
+            active.add(bot);
         }
         return stats;
     }
@@ -170,6 +164,12 @@ public final class PhantomManager {
 
     private void updateState(PhantomBot bot) {
         Player p = bot.actor;
+
+        if (bot.firstTick) {
+            bot.firstTick = false;
+            bot.state = PhantomState.ACTIVE;
+            return;
+        }
 
         // если есть цель/в бою -> ACTIVE
         boolean hasTarget = bot.target != null && !PhantomAdapter.isDead(bot.target);
