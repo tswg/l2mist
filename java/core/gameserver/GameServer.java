@@ -65,8 +65,6 @@ import core.gameserver.network.authcomm.AuthServerCommunication;
 import core.gameserver.network.l2.GameClient;
 import core.gameserver.network.l2.GamePacketHandler;
 import core.gameserver.network.telnet.TelnetServer;
-import core.gameserver.phantom.PhantomConfig;
-import core.gameserver.phantom.PhantomManager;
 import core.gameserver.scripts.Scripts;
 import core.gameserver.tables.AugmentationData;
 import core.gameserver.tables.ClanTable;
@@ -316,21 +314,8 @@ public class GameServer
 			_log.info(line);
 
 		MistWorldTeam.info();
-		System.out.println("[PHANTOM] Loading phantom config before init...");
-		try
-		{
-			PhantomConfig.load("config/phantom/phantom.properties");
-			System.out.println("[PHANTOM] Phantom config loaded. ENABLED=" + PhantomConfig.ENABLED);
-		}
-		catch (Exception e)
-		{
-			PhantomConfig.ENABLED = false;
-			System.err.println("[PHANTOM][ERROR] Failed to load config/phantom/phantom.properties. Phantom module disabled.");
-			e.printStackTrace();
-		}
-
-		System.out.println("[PHANTOM] Calling PhantomManager.init()...");
-		PhantomManager.getInstance().init();
+		if(Config.ALLOW_PHANTOM_PLAYERS)
+			PhantomPlayers.init();
 	}
 
 	public GameServerListenerList getListeners()
