@@ -19,16 +19,26 @@ public class FindTargetAction implements PhantomAction {
 
     @Override
     public void run(PhantomContext ctx) {
+        String before = ctx.target != null ? (ctx.target.getName() + "(" + ctx.target.getObjectId() + ")") : "null";
         ctx.target = Targeting.findBestMob(ctx.actor, PhantomConfig.SEARCH_RADIUS);
-        if (ctx.actor != null && ctx.target != null)
+        if (ctx.actor != null)
             ctx.actor.setTarget(ctx.target);
+
+        String after = ctx.target != null ? (ctx.target.getName() + "(" + ctx.target.getObjectId() + ")") : "null";
         if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
-            _log.debug("[PHANTOM][FindTargetAction] actor={} objectId={} searchRadius={} target={}",
+            _log.debug("[PHANTOM][FindTargetAction] actor={} objectId={} searchRadius={} targetBefore={} selectedTarget={}",
                     ctx.actor != null ? ctx.actor.getName() : "null",
                     ctx.actor != null ? ctx.actor.getObjectId() : 0,
                     PhantomConfig.SEARCH_RADIUS,
-                    ctx.target != null ? (ctx.target.getName() + "(" + ctx.target.getObjectId() + ")") : "null");
+                    before,
+                    after);
         ctx.syncBack();
+
+        if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+            _log.debug("[PHANTOM][FindTargetAction] actor={} objectId={} syncedBotTarget={}",
+                    ctx.actor != null ? ctx.actor.getName() : "null",
+                    ctx.actor != null ? ctx.actor.getObjectId() : 0,
+                    ctx.bot.target != null ? (ctx.bot.target.getName() + "(" + ctx.bot.target.getObjectId() + ")") : "null");
 
         if (ctx.target != null && ctx.bot.target == null)
             _log.warn("[PHANTOM][FindTargetActionSync] actor={} objectId={} target-picked-but-lost-after-sync",

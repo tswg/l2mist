@@ -8,6 +8,7 @@ import core.gameserver.model.World;
 import core.gameserver.model.instances.NpcInstance;
 import core.gameserver.model.items.ItemInstance;
 import core.gameserver.utils.Location;
+import core.gameserver.ai.CtrlEvent;
 import core.gameserver.ai.CtrlIntention;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,12 +102,23 @@ public final class PhantomAdapter {
     	if(p == null || loc == null)
     		return;
 		p.setRunning();
+		if (p.isSitting())
+			p.setSitting(false);
+		if (p.isParalyzed())
+			p.stopParalyzed();
+		if (p.isImmobilized())
+			p.stopImmobilized();
+		if (p.isRooted())
+			p.stopRooted();
 		p.getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
-        p.moveToLocation(loc, 0, true);
+		boolean started = p.moveToLocation(loc, 0, true);
+		if (!started)
+			started = p.moveToLocation(loc, 0, false);
+		p.getAI().notifyEvent(CtrlEvent.EVT_THINK);
         if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
-            _log.debug("[PHANTOM][ai-move] actor={} objId={} from=({}, {}, {}) to=({}, {}, {}) intention={}",
+            _log.debug("[PHANTOM][ai-move] actor={} objId={} from=({}, {}, {}) to=({}, {}, {}) started={} intention={} isMoving={}",
                     p.getName(), p.getObjectId(), p.getX(), p.getY(), p.getZ(),
-                    loc.getX(), loc.getY(), loc.getZ(), currentIntention(p));
+                    loc.getX(), loc.getY(), loc.getZ(), started, currentIntention(p), isMoving(p));
     }
 
 	public static void attack(Player p, Creature target) {
@@ -116,6 +128,7 @@ public final class PhantomAdapter {
 		p.setRunning();
 		p.setTarget(target);
         p.getAI().setIntention(CtrlIntention.AI_INTENTION_ATTACK, target);
+		p.getAI().notifyEvent(CtrlEvent.EVT_THINK);
         if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
             _log.debug("[PHANTOM][ai-attack] actor={} objId={} target={} targetObjId={} dist={} intention={}",
                     p.getName(), p.getObjectId(), target.getName(), target.getObjectId(),

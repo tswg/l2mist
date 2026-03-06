@@ -15,7 +15,9 @@ public class MoveToTargetAction implements PhantomAction {
         if (t == null || PhantomAdapter.isDead(t)) return false;
 
         double d = PhantomAdapter.dist3D(ctx.actor, t);
-        return d > 160 && d < PhantomConfig.PURSUIT_RANGE;
+        int attackRange = ctx.actor != null ? ctx.actor.getPhysicalAttackRange() + 40 : 160;
+        int chaseLimit = Math.max(PhantomConfig.PURSUIT_RANGE, PhantomConfig.SEARCH_RADIUS);
+        return d > attackRange && d <= chaseLimit;
     }
 
     @Override

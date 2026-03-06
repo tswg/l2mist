@@ -8,6 +8,7 @@ import core.gameserver.data.xml.holder.ItemHolder;
 import core.gameserver.model.Player;
 import core.gameserver.model.SubClass;
 import core.gameserver.model.base.ClassId;
+import core.gameserver.model.base.ClassType2;
 import core.gameserver.model.base.InvisibleType;
 import core.gameserver.model.items.Inventory;
 import core.gameserver.model.items.ItemInstance;
@@ -27,6 +28,8 @@ import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -227,7 +230,7 @@ public final class PhantomSpawner {
 		GearGrade(ItemTemplate.Grade crystal) { this.crystal = crystal; }
 	}
 
-	private enum Archetype { WARRIOR, MAGE, ARCHER }
+	private enum Archetype { FIGHTER, MAGE, ARCHER, ROGUE, SUPPORT }
 
 	private GearGrade gradeByLevel(int level) {
 		if (level >= 76)
@@ -244,14 +247,20 @@ public final class PhantomSpawner {
 	}
 
 	private Archetype detectArchetype(Player phantom) {
-		ClassId classId = ClassId.VALUES[phantom.getActiveClassId()];
+		ClassId classId = resolveClassId(phantom);
 		if (classId == null)
-			return Archetype.WARRIOR;
-		if (classId.isMage())
+			return Archetype.FIGHTER;
+
+		ClassType2 type2 = classId.getType2();
+		if (type2 == ClassType2.Healer || type2 == ClassType2.Enchanter)
+			return Archetype.SUPPORT;
+		if (type2 == ClassType2.Wizard || type2 == ClassType2.Summoner || classId.isMage())
 			return Archetype.MAGE;
 		if (isArcherClass(classId))
 			return Archetype.ARCHER;
-		return Archetype.WARRIOR;
+		if (type2 == ClassType2.Rogue || isDaggerClass(classId))
+			return Archetype.ROGUE;
+		return Archetype.FIGHTER;
 	}
 
 	private boolean isArcherClass(ClassId classId) {
@@ -270,6 +279,27 @@ public final class PhantomSpawner {
 		}
 	}
 
+	private boolean isDaggerClass(ClassId classId) {
+		switch (classId) {
+			case treasureHunter:
+			case plainsWalker:
+			case abyssWalker:
+			case adventurer:
+			case windRider:
+			case ghostHunter:
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	private ClassId resolveClassId(Player phantom) {
+		int classIdx = phantom != null ? phantom.getActiveClassId() : -1;
+		if (classIdx < 0 || classIdx >= ClassId.VALUES.length)
+			return null;
+		return ClassId.VALUES[classIdx];
+	}
+
 	private void equipByGrade(Player phantom) {
 		if (phantom.getInventory() == null)
 			return;
@@ -278,7 +308,16 @@ public final class PhantomSpawner {
 		final Archetype archetype = detectArchetype(phantom);
 
 		unequipCombatSlots(phantom);
-		equipBestWeapon(phantom, maxGrade, archetype);
+
+		ItemInstance invWeapon = pickWeaponFromInventory(phantom, maxGrade, archetype);
+		if (invWeapon != null)
+			equipExistingItem(phantom, invWeapon);
+		else {
+			ItemTemplate weapon = selectWeaponFor(maxGrade, archetype);
+			if (weapon != null)
+				equipTemplateItem(phantom, weapon);
+		}
+
 		equipArmorSet(phantom, maxGrade, archetype);
 
 		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
@@ -299,7 +338,31 @@ public final class PhantomSpawner {
 		}
 	}
 
-	private void equipBestWeapon(Player phantom, GearGrade maxGrade, Archetype archetype) {
+	private ItemTemplate selectWeaponFor(GearGrade maxGrade, Archetype archetype) {
+		List<ItemTemplate> candidates = collectWeaponTemplates(maxGrade, archetype);
+		return pickRandomTopByPrice(candidates, 6);
+	}
+
+	private ItemInstance pickWeaponFromInventory(Player phantom, GearGrade maxGrade, Archetype archetype) {
+		ItemInstance[] items = phantom.getInventory().getItems();
+		List<ItemInstance> candidates = new ArrayList<ItemInstance>();
+		for (ItemInstance item : items) {
+			if (item == null || item.getTemplate() == null || !item.getTemplate().isWeapon())
+				continue;
+			ItemTemplate tpl = item.getTemplate();
+			if (tpl.getBodyPart() != ItemTemplate.SLOT_R_HAND && tpl.getBodyPart() != ItemTemplate.SLOT_LR_HAND)
+				continue;
+			if (!isAllowedGrade(tpl.getCrystalType(), maxGrade))
+				continue;
+			WeaponTemplate.WeaponType type = ((WeaponTemplate) tpl).getItemType();
+			if (!weaponFits(type, archetype))
+				continue;
+			candidates.add(item);
+		}
+		return pickRandomInventoryByPrice(candidates, 4);
+	}
+
+	private List<ItemTemplate> collectWeaponTemplates(GearGrade maxGrade, Archetype archetype) {
 		List<ItemTemplate> candidates = new ArrayList<ItemTemplate>();
 		for (ItemTemplate item : ItemHolder.getInstance().getAllTemplates()) {
 			if (item == null || !item.isWeapon())
@@ -313,19 +376,57 @@ public final class PhantomSpawner {
 				continue;
 			candidates.add(item);
 		}
-
-		ItemTemplate best = pickMostExpensive(candidates);
-		if (best != null)
-			equipTemplateItem(phantom, best);
+		return candidates;
 	}
 
 	private void equipArmorSet(Player phantom, GearGrade maxGrade, Archetype archetype) {
-		ArmorTemplate.ArmorType desired = archetype == Archetype.MAGE ? ArmorTemplate.ArmorType.MAGIC : (archetype == Archetype.ARCHER ? ArmorTemplate.ArmorType.LIGHT : ArmorTemplate.ArmorType.HEAVY);
+		ArmorTemplate.ArmorType desired = desiredArmorType(archetype);
+		Map<Integer, ItemInstance> invArmor = pickArmorFromInventory(phantom, maxGrade, desired);
 		for (int bodyPart : new int[]{ItemTemplate.SLOT_CHEST, ItemTemplate.SLOT_LEGS, ItemTemplate.SLOT_GLOVES, ItemTemplate.SLOT_FEET}) {
-			ItemTemplate best = pickBestArmor(bodyPart, desired, maxGrade);
-			if (best != null)
-				equipTemplateItem(phantom, best);
+			ItemInstance inv = invArmor.get(bodyPart);
+			if (inv != null)
+				equipExistingItem(phantom, inv);
+			else {
+				ItemTemplate best = pickBestArmor(bodyPart, desired, maxGrade);
+				if (best != null)
+					equipTemplateItem(phantom, best);
+			}
 		}
+	}
+
+	private Map<Integer, ItemInstance> pickArmorFromInventory(Player phantom, GearGrade maxGrade, ArmorTemplate.ArmorType desired) {
+		Map<Integer, List<ItemInstance>> byPart = new HashMap<Integer, List<ItemInstance>>();
+		for (ItemInstance item : phantom.getInventory().getItems()) {
+			if (item == null || item.getTemplate() == null || !item.getTemplate().isArmor())
+				continue;
+			ItemTemplate tpl = item.getTemplate();
+			if (!isAllowedGrade(tpl.getCrystalType(), maxGrade))
+				continue;
+			if (tpl.getBodyPart() != ItemTemplate.SLOT_CHEST && tpl.getBodyPart() != ItemTemplate.SLOT_LEGS && tpl.getBodyPart() != ItemTemplate.SLOT_GLOVES && tpl.getBodyPart() != ItemTemplate.SLOT_FEET)
+				continue;
+			ArmorTemplate.ArmorType type = ((ArmorTemplate) tpl).getItemType();
+			if (type != desired)
+				continue;
+			List<ItemInstance> list = byPart.get(tpl.getBodyPart());
+			if (list == null) {
+				list = new ArrayList<ItemInstance>();
+				byPart.put(tpl.getBodyPart(), list);
+			}
+			list.add(item);
+		}
+
+		Map<Integer, ItemInstance> chosen = new HashMap<Integer, ItemInstance>();
+		for (Map.Entry<Integer, List<ItemInstance>> e : byPart.entrySet())
+			chosen.put(e.getKey(), pickRandomInventoryByPrice(e.getValue(), 3));
+		return chosen;
+	}
+
+	private ArmorTemplate.ArmorType desiredArmorType(Archetype archetype) {
+		if (archetype == Archetype.MAGE || archetype == Archetype.SUPPORT)
+			return ArmorTemplate.ArmorType.MAGIC;
+		if (archetype == Archetype.ARCHER || archetype == Archetype.ROGUE)
+			return ArmorTemplate.ArmorType.LIGHT;
+		return ArmorTemplate.ArmorType.HEAVY;
 	}
 
 	private ItemTemplate pickBestArmor(int bodyPart, ArmorTemplate.ArmorType desired, GearGrade maxGrade) {
@@ -357,15 +458,21 @@ public final class PhantomSpawner {
 	}
 
 	private boolean weaponFits(WeaponTemplate.WeaponType type, Archetype archetype) {
-		if (archetype == Archetype.MAGE)
-			return type == WeaponTemplate.WeaponType.BLUNT || type == WeaponTemplate.WeaponType.BIGBLUNT || type == WeaponTemplate.WeaponType.SWORD;
+		if (archetype == Archetype.MAGE || archetype == Archetype.SUPPORT)
+			return type == WeaponTemplate.WeaponType.BLUNT || type == WeaponTemplate.WeaponType.BIGBLUNT || type == WeaponTemplate.WeaponType.SWORD || type == WeaponTemplate.WeaponType.DAGGER;
 		if (archetype == Archetype.ARCHER)
 			return type == WeaponTemplate.WeaponType.BOW || type == WeaponTemplate.WeaponType.CROSSBOW;
-		return type == WeaponTemplate.WeaponType.SWORD || type == WeaponTemplate.WeaponType.BLUNT || type == WeaponTemplate.WeaponType.BIGSWORD || type == WeaponTemplate.WeaponType.BIGBLUNT || type == WeaponTemplate.WeaponType.DAGGER || type == WeaponTemplate.WeaponType.DUAL || type == WeaponTemplate.WeaponType.DUALDAGGER;
+		if (archetype == Archetype.ROGUE)
+			return type == WeaponTemplate.WeaponType.DAGGER || type == WeaponTemplate.WeaponType.DUALDAGGER || type == WeaponTemplate.WeaponType.SWORD;
+		return type == WeaponTemplate.WeaponType.SWORD || type == WeaponTemplate.WeaponType.BLUNT || type == WeaponTemplate.WeaponType.BIGSWORD || type == WeaponTemplate.WeaponType.BIGBLUNT || type == WeaponTemplate.WeaponType.DUAL;
 	}
 
 	private ItemTemplate pickMostExpensive(List<ItemTemplate> items) {
-		if (items.isEmpty())
+		return pickRandomTopByPrice(items, 1);
+	}
+
+	private ItemTemplate pickRandomTopByPrice(List<ItemTemplate> items, int topN) {
+		if (items == null || items.isEmpty())
 			return null;
 		Collections.sort(items, new Comparator<ItemTemplate>() {
 			@Override
@@ -379,7 +486,38 @@ public final class PhantomSpawner {
 				return 0;
 			}
 		});
-		return items.get(0);
+		int n = Math.max(1, Math.min(topN, items.size()));
+		return items.get(Rnd.get(n));
+	}
+
+
+	private ItemInstance pickRandomInventoryByPrice(List<ItemInstance> items, int topN) {
+		if (items == null || items.isEmpty())
+			return null;
+		Collections.sort(items, new Comparator<ItemInstance>() {
+			@Override
+			public int compare(ItemInstance o1, ItemInstance o2) {
+				int p2 = o2.getTemplate() != null ? o2.getTemplate().getReferencePrice() : 0;
+				int p1 = o1.getTemplate() != null ? o1.getTemplate().getReferencePrice() : 0;
+				if (p2 > p1)
+					return 1;
+				if (p2 < p1)
+					return -1;
+				return 0;
+			}
+		});
+		int n = Math.max(1, Math.min(topN, items.size()));
+		return items.get(Rnd.get(n));
+	}
+
+	private void equipExistingItem(Player phantom, ItemInstance item) {
+		if (phantom == null || item == null || phantom.getInventory() == null)
+			return;
+		try {
+			phantom.getInventory().equipItem(item);
+		} catch (Exception e) {
+			_log.warn("[PHANTOM][SPAWN_ERROR] equip existing failed name={} objectId={} itemObjId={} itemId={}", phantom.getName(), phantom.getObjectId(), item.getObjectId(), item.getItemId(), e);
+		}
 	}
 
 	private void equipTemplateItem(Player phantom, ItemTemplate template) {
