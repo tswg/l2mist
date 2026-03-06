@@ -17,6 +17,7 @@ public class PhantomBot {
     public Creature target;
     public boolean firstTick = true;
     public long forceActiveUntilTs;
+    public long lastForcedRoamTs;
 
     // stuck
     public int lastX, lastY, lastZ;
@@ -27,5 +28,6 @@ public class PhantomBot {
         this.spot = spot;
         this.lastMoveTs = System.currentTimeMillis();
         this.forceActiveUntilTs = this.lastMoveTs + 8000L;
+        this.lastForcedRoamTs = 0L;
     }
 }

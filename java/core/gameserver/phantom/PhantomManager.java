@@ -15,6 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public final class PhantomManager {
 	private static final Logger _log = LoggerFactory.getLogger(PhantomManager.class);
+	private static final long TRACKED_FORCED_ROAM_INTERVAL_MS = 4500L;
 
     private static final PhantomManager INSTANCE = new PhantomManager();
     public static PhantomManager getInstance() { return INSTANCE; }
@@ -185,11 +186,15 @@ public final class PhantomManager {
             try {
                 TickSnapshot before = TickSnapshot.capture(bot);
                 PhantomState stateBeforeTick = bot.state;
+                String intentionBefore = PhantomAdapter.currentIntention(bot.actor);
+                String targetBefore = bot.target != null ? (bot.target.getName() + "(" + bot.target.getObjectId() + ")") : "null";
+                forceTrackedRoamIfNeeded(bot);
                 PhantomWorld.getInstance().brain().tick(bot);
                 TickSnapshot afterBrain = TickSnapshot.capture(bot);
+                String intentionAfterBrain = PhantomAdapter.currentIntention(bot.actor);
                 updateState(bot);
                 TickSnapshot afterState = TickSnapshot.capture(bot);
-                diagnostic(bot, stateBeforeTick, before, afterBrain, afterState);
+                diagnostic(bot, stateBeforeTick, intentionBefore, intentionAfterBrain, targetBefore, before, afterBrain, afterState);
             } catch (Throwable t) {
 				_log.warn("Phantom tick failed for actor={}", bot.actor != null ? bot.actor.getName() : "null", t);
             }
@@ -258,29 +263,55 @@ public final class PhantomManager {
                     bot.actor != null ? bot.actor.getName() : "null", prev, next, reason, bot.noTargetTicks);
     }
 
-    private void diagnostic(PhantomBot bot, PhantomState stateBeforeTick, TickSnapshot before, TickSnapshot afterBrain, TickSnapshot afterState) {
+    private void diagnostic(PhantomBot bot, PhantomState stateBeforeTick, String intentionBefore, String intentionAfterBrain, String targetBefore, TickSnapshot before, TickSnapshot afterBrain, TickSnapshot afterState) {
         Player p = bot.actor;
-        if (p == null)
+        if (p == null || !PhantomConfig.DEBUG || !_log.isDebugEnabled())
             return;
 
         boolean tracked = debugTracked.contains(p.getObjectId());
-        if (!tracked && !PhantomAdapter.shouldSampleDiagnostic())
+        if (!tracked)
             return;
 
         boolean hasTarget = bot.target != null && !PhantomAdapter.isDead(bot.target);
         double targetDistance = hasTarget ? PhantomAdapter.dist3D(p, bot.target) : -1d;
 
-        _log.debug("[PHANTOM][diag] actor={} objId={} tracked={} stateBeforeTick={} stateAfterTick={} hasTarget={} target={} targetDistance={} intention={} isMoving={} isInCombat={} activeWeapon={} before=({}, {}, {}) afterBrain=({}, {}, {}) afterState=({}, {}, {})",
-                p.getName(), p.getObjectId(), tracked, stateBeforeTick, bot.state, hasTarget,
+        _log.debug("[PHANTOM][diag] actor={} objId={} tracked={} stateBeforeTick={} stateAfterTick={} targetBefore={} targetAfter={} intentionBefore={} intentionAfterBrain={} intentionAfterState={} isMoving={} isInCombat={} distToTarget={} coordsBefore=({}, {}, {}) coordsAfterBrain=({}, {}, {}) coordsAfterState=({}, {}, {}) updateStateResult={} ",
+                p.getName(), p.getObjectId(), tracked, stateBeforeTick, bot.state,
+                targetBefore,
                 bot.target != null ? (bot.target.getName() + "(" + bot.target.getObjectId() + ")") : "null",
-                targetDistance,
+                intentionBefore,
+                intentionAfterBrain,
                 PhantomAdapter.currentIntention(p),
                 PhantomAdapter.isMoving(p),
                 PhantomAdapter.isInCombat(p),
-                PhantomAdapter.activeWeapon(p),
+                targetDistance,
                 before.x, before.y, before.z,
                 afterBrain.x, afterBrain.y, afterBrain.z,
-                afterState.x, afterState.y, afterState.z);
+                afterState.x, afterState.y, afterState.z,
+                bot.state.name());
+    }
+
+
+    private void forceTrackedRoamIfNeeded(PhantomBot bot) {
+        Player p = bot.actor;
+        if (p == null)
+            return;
+        if (!PhantomConfig.DEBUG || !debugTracked.contains(p.getObjectId()))
+            return;
+        if (bot.target != null && !PhantomAdapter.isDead(bot.target))
+            return;
+
+        long now = System.currentTimeMillis();
+        if (now - bot.lastForcedRoamTs < TRACKED_FORCED_ROAM_INTERVAL_MS)
+            return;
+
+        int dx = ThreadLocalRandom.current().nextInt(401) - 200;
+        int dy = ThreadLocalRandom.current().nextInt(401) - 200;
+        PhantomAdapter.moveTo(p, PhantomAdapter.loc(p.getX() + dx, p.getY() + dy, p.getZ()));
+        bot.lastForcedRoamTs = now;
+
+        _log.debug("[PHANTOM][forced-roam] actor={} objId={} to=({}, {}, {})",
+                p.getName(), p.getObjectId(), p.getX() + dx, p.getY() + dy, p.getZ());
     }
 
     private void requeue(PhantomBot bot) {
