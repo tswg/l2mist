@@ -20,8 +20,8 @@ public class FindTargetAction implements PhantomAction {
     @Override
     public void run(PhantomContext ctx) {
         ctx.target = Targeting.findBestMob(ctx.actor, PhantomConfig.SEARCH_RADIUS);
-        if (_log.isInfoEnabled())
-            _log.info("[PHANTOM][FindTargetAction] actor={} objectId={} searchRadius={} target={}",
+        if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+            _log.debug("[PHANTOM][FindTargetAction] actor={} objectId={} searchRadius={} target={}",
                     ctx.actor != null ? ctx.actor.getName() : "null",
                     ctx.actor != null ? ctx.actor.getObjectId() : 0,
                     PhantomConfig.SEARCH_RADIUS,

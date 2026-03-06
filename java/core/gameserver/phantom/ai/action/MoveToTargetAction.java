@@ -24,8 +24,8 @@ public class MoveToTargetAction implements PhantomAction {
 
     @Override
     public void run(PhantomContext ctx) {
-        if (_log.isInfoEnabled())
-            _log.info("[PHANTOM][MoveToTargetAction] actor={} objectId={} target={} dist={}",
+        if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+            _log.debug("[PHANTOM][MoveToTargetAction] actor={} objectId={} target={} dist={}",
                     ctx.actor != null ? ctx.actor.getName() : "null",
                     ctx.actor != null ? ctx.actor.getObjectId() : 0,
                     ctx.target != null ? (ctx.target.getName() + "(" + ctx.target.getObjectId() + ")") : "null",
