@@ -140,7 +140,7 @@ public final class PhantomSpawner {
 				try {
 					phantom.getInventory().equipItem(item);
 				} catch (Exception e) {
-					_log.warn("[PHANTOM][SPAWN] equip failed name={} objectId={} itemId={}", phantom.getName(), phantom.getObjectId(), item.getItemId(), e);
+					_log.warn("[PHANTOM][SPAWN_ERROR] equip failed name={} objectId={} itemId={}", phantom.getName(), phantom.getObjectId(), item.getItemId(), e);
 				}
 			}
 		}

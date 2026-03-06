@@ -100,13 +100,16 @@ public final class PhantomAdapter {
     public static void moveTo(Player p, Location loc) {
     	if(p == null || loc == null)
     		return;
+		p.setRunning();
+		p.getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
         p.moveToLocation(loc, 0, true);
     }
 
-    public static void attack(Player p, Creature target) {
+	public static void attack(Player p, Creature target) {
     	if(p == null || target == null)
     		return;
 
+		p.setRunning();
 		p.setTarget(target);
         p.getAI().setIntention(CtrlIntention.AI_INTENTION_ATTACK, target);
     }
@@ -150,6 +153,7 @@ public final class PhantomAdapter {
 			}
 		});
 
+		List<NpcDistance> top = filtered;
 		int checks = Math.min(LOS_TOP_N, top.size());
 		for (int i = 0; i < checks; i++) {
 			NpcInstance npc = top.get(i).npc;
@@ -158,7 +162,7 @@ public final class PhantomAdapter {
 
 		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
 			_log.debug("[PHANTOM][getAroundMonsters] actor={} objectId={} radius={} worldAround={} candidate={} returned={} losTopN={}",
-					p.getName(), p.getObjectId(), radius, around.size(), top.size(), result.size(), checks);
+					p.getName(), p.getObjectId(), radius, rawCount, distanceCount, result.size(), checks);
 
 		return result;
     }
@@ -267,7 +271,7 @@ public final class PhantomAdapter {
     }
 
     public static boolean isValidFarmTarget(Player p, NpcInstance n) {
-		return validateFarmTarget(p, n, PhantomConfig.SEARCH_RADIUS, true, null);
+		return validateFarmTarget(p, n, PhantomConfig.SEARCH_RADIUS, true, null) == ValidationResult.OK;
     }
 
 	public static ValidationResult validateFarmTarget(Player p, NpcInstance n, int maxRange, boolean checkLos, StringBuilder reasonOut) {
