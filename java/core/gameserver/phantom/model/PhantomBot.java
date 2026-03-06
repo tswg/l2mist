@@ -15,6 +15,7 @@ public class PhantomBot {
     public int noTargetTicks = 0;
 
     public Creature target;
+    public boolean firstTick = true;
 
     // stuck
     public int lastX, lastY, lastZ;

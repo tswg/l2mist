@@ -3,6 +3,7 @@ package core.gameserver.phantom;
 import core.commons.dbutils.DbUtils;
 import core.commons.util.Rnd;
 import core.gameserver.database.DatabaseFactory;
+import core.gameserver.ai.CtrlIntention;
 import core.gameserver.model.Player;
 import core.gameserver.model.base.InvisibleType;
 import core.gameserver.model.items.ItemInstance;
@@ -75,11 +76,22 @@ public final class PhantomSpawner {
 		phantom.setPhantomLoc(spawnLoc.getX(), spawnLoc.getY(), spawnLoc.getZ());
 		phantom.setXYZ(spawnLoc.getX(), spawnLoc.getY(), spawnLoc.getZ());
 		phantom.spawnMe(spawnLoc);
+		phantom.setRunning();
+		phantom.getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
+		_log.info("[PHANTOM][SPAWN] after spawn name={} objectId={} activeWeapon={} inventorySize={}",
+				phantom.getName(), phantom.getObjectId(),
+				phantom.getActiveWeaponInstance() != null ? phantom.getActiveWeaponInstance().getItemId() : 0,
+				phantom.getInventory() != null ? phantom.getInventory().getSize() : 0);
 
 		ensureBasicEquipment(phantom);
 		ensureConsumables(phantom);
+		phantom.sendUserInfo(true);
+		phantom.broadcastUserInfo(true);
 		phantom.broadcastCharInfo();
-		phantom.getAI().setIntention(core.gameserver.ai.CtrlIntention.AI_INTENTION_ACTIVE);
+		_log.info("[PHANTOM][SPAWN] after equip name={} objectId={} activeWeapon={} inventorySize={}",
+				phantom.getName(), phantom.getObjectId(),
+				phantom.getActiveWeaponInstance() != null ? phantom.getActiveWeaponInstance().getItemId() : 0,
+				phantom.getInventory() != null ? phantom.getInventory().getSize() : 0);
 		return phantom;
 	}
 
@@ -105,7 +117,7 @@ public final class PhantomSpawner {
 	}
 
 	private void ensureBasicEquipment(Player phantom) {
-		if (phantom.getActiveWeaponInstance() != null)
+		if (phantom.getInventory() == null)
 			return;
 
 		for (CreateItem createItem : phantom.getTemplate().getItems()) {
@@ -115,10 +127,10 @@ public final class PhantomSpawner {
 
 			phantom.getInventory().addItem(item);
 			if (createItem.isEquipable() && item.isEquipable()) {
-				if (item.getTemplate().getType2() == ItemTemplate.TYPE2_WEAPON) {
-					phantom.getInventory().equipItem(item);
-					break;
-				}
+				if (item.getTemplate().getType2() == ItemTemplate.TYPE2_WEAPON && phantom.getActiveWeaponInstance() != null)
+					continue;
+
+				phantom.getInventory().equipItem(item);
 			}
 		}
 	}

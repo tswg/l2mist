@@ -15,6 +15,12 @@ public final class Targeting {
 
     public static NpcInstance findBestMob(Player p, int radius) {
         List<NpcInstance> mobs = PhantomAdapter.getAroundMonsters(p, radius);
+        if (_log.isInfoEnabled())
+            _log.info("[PHANTOM][Targeting] actor={} objectId={} radius={} aroundMonsters={}",
+                    p != null ? p.getName() : "null",
+                    p != null ? p.getObjectId() : 0,
+                    radius,
+                    mobs != null ? mobs.size() : 0);
 
         NpcInstance best = null;
         double bestScore = -1e18;
