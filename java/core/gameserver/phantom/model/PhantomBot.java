@@ -11,6 +11,8 @@ public class PhantomBot {
     public long lastShotsTs = 0L;
 
     public PhantomState state = PhantomState.IDLE;
+    public long stateSinceTs = System.currentTimeMillis();
+    public int noTargetTicks = 0;
 
     public Creature target;
     public boolean firstTick = true;

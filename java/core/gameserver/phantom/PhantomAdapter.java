@@ -18,6 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Весь остальной phantom-код НЕ должен напрямую трогать Player/NpcInstance.
@@ -122,22 +123,25 @@ public final class PhantomAdapter {
 			return result;
 
 		List<NpcInstance> around = World.getAroundNpc(p, radius, 300);
-		List<NpcDistance> top = new ArrayList<NpcDistance>();
+		List<NpcDistance> filtered = new ArrayList<NpcDistance>();
+		int rawCount = around.size();
+		int distanceCount = 0;
 		for(NpcInstance npc : around)
 		{
 			if(npc == null || npc.isDead() || !npc.isVisible())
 				continue;
-			if(!(npc.isMonster() || npc.isAttackable(p)))
+			if(!npc.isMonster() && !npc.isAttackable(p))
 				continue;
 
 			long d2 = distance2Dsq(p, npc);
 			if(d2 > (long) radius * radius)
 				continue;
 
-			top.add(new NpcDistance(npc, d2));
+			distanceCount++;
+			filtered.add(new NpcDistance(npc, d2));
 		}
 
-		Collections.sort(top, new Comparator<NpcDistance>() {
+		Collections.sort(filtered, new Comparator<NpcDistance>() {
 			@Override
 			public int compare(NpcDistance o1, NpcDistance o2) {
 				if (o1.d2 == o2.d2)
@@ -205,6 +209,32 @@ public final class PhantomAdapter {
 			this.canSee = canSee;
 			this.expiresAt = expiresAt;
 		}
+    }
+
+
+    public static String currentIntention(Player p)
+    {
+		if(p == null || p.getAI() == null)
+			return "null";
+		CtrlIntention i = p.getAI().getIntention();
+		return i == null ? "null" : i.name();
+    }
+
+    public static boolean isMoving(Player p)
+    {
+		return p != null && p.isMoving;
+    }
+
+    public static String activeWeapon(Player p)
+    {
+		if(p == null || p.getActiveWeaponInstance() == null)
+			return "none";
+		return p.getActiveWeaponInstance().getName() + "(" + p.getActiveWeaponInstance().getItemId() + ")";
+    }
+
+    public static boolean shouldSampleDiagnostic()
+    {
+		return ThreadLocalRandom.current().nextInt(12) == 0;
     }
 
     public static boolean useItem(Player p, int itemId) {
