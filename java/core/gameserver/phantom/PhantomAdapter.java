@@ -98,9 +98,9 @@ public final class PhantomAdapter {
 
     // --------- команды AI ---------
 
-    public static void moveTo(Player p, Location loc) {
+    public static boolean moveTo(Player p, Location loc) {
     	if(p == null || loc == null)
-    		return;
+			return false;
 		p.setRunning();
 		if (p.isSitting())
 			p.setSitting(false);
@@ -116,9 +116,10 @@ public final class PhantomAdapter {
 			started = p.moveToLocation(loc, 0, false);
 		p.getAI().notifyEvent(CtrlEvent.EVT_THINK);
         if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
-            _log.debug("[PHANTOM][ai-move] actor={} objId={} from=({}, {}, {}) to=({}, {}, {}) started={} intention={} isMoving={}",
+            _log.debug("[PHANTOM][ai-move] actor={} objId={} from=({}, {}, {}) to=({}, {}, {}) started={} intention={} isMoving={} blockedFlags={} store={} observer={}",
                     p.getName(), p.getObjectId(), p.getX(), p.getY(), p.getZ(),
-                    loc.getX(), loc.getY(), loc.getZ(), started, currentIntention(p), isMoving(p));
+                    loc.getX(), loc.getY(), loc.getZ(), started, currentIntention(p), isMoving(p), blockedStateSummary(p), p.isInStoreMode(), p.isInObserverMode());
+        return started;
     }
 
 	public static void attack(Player p, Creature target) {
@@ -236,6 +237,51 @@ public final class PhantomAdapter {
 		}
     }
 
+
+	public static String blockedStateSummary(Player p)
+	{
+		if (p == null)
+			return "null-player";
+		StringBuilder sb = new StringBuilder();
+		appendFlag(sb, "dead", p.isDead());
+		appendFlag(sb, "alikeDead", p.isAlikeDead());
+		appendFlag(sb, "movementDisabled", p.isMovementDisabled());
+		appendFlag(sb, "actionsDisabled", p.isActionsDisabled());
+		appendFlag(sb, "immobilized", p.isImmobilized());
+		appendFlag(sb, "rooted", p.isRooted());
+		appendFlag(sb, "paralyzed", p.isParalyzed());
+		appendFlag(sb, "sitting", p.isSitting());
+		appendFlag(sb, "fakeDeath", p.isFakeDeath());
+		appendFlag(sb, "observer", p.isInObserverMode());
+		appendFlag(sb, "store", p.isInStoreMode());
+		appendFlag(sb, "overloaded", p.isOverloaded());
+		appendFlag(sb, "frozen", p.isFrozen());
+		appendFlag(sb, "attacking", p.isAttackingNow());
+		appendFlag(sb, "casting", p.isCastingNow());
+		if (sb.length() == 0)
+			return "none";
+		return sb.toString();
+	}
+
+	private static void appendFlag(StringBuilder sb, String name, boolean val)
+	{
+		if (!val)
+			return;
+		if (sb.length() > 0)
+			sb.append(',');
+		sb.append(name);
+	}
+
+	public static String movementDebugSnapshot(Player p)
+	{
+		if (p == null)
+			return "null-player";
+		return "coords=(" + p.getX() + "," + p.getY() + "," + p.getZ() + ")" +
+				" intention=" + currentIntention(p) +
+				" isMoving=" + isMoving(p) +
+				" blocked=" + blockedStateSummary(p) +
+				" target=" + (p.getTarget() != null ? (p.getTarget().getName() + "(" + p.getTarget().getObjectId() + ")") : "null");
+	}
 
     public static String currentIntention(Player p)
     {

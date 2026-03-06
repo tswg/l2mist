@@ -140,12 +140,18 @@ public final class PhantomSpawner {
 		phantom.abortAttack(true, false);
 		phantom.abortCast(true, false);
 		phantom.stopMove(false);
+		if (phantom.isInStoreMode())
+			phantom.setPrivateStoreType(Player.STORE_PRIVATE_NONE);
+		if (phantom.isInObserverMode())
+			phantom.leaveObserverMode();
+		if (phantom.isOverloaded())
+			phantom.setOverloaded(false);
 		phantom.setTarget(null);
 		phantom.setRunning();
 		phantom.getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
 
 		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
-			_log.debug("[PHANTOM][SPAWN] state-reset stage={} name={} objectId={} dead={} hp={}/{} mp={}/{} cp={}/{} fakeDeath={} sitting={} paralyzed={} immobilized={} alikeDead={} intention={}",
+			_log.debug("[PHANTOM][SPAWN] state-reset stage={} name={} objectId={} dead={} hp={}/{} mp={}/{} cp={}/{} fakeDeath={} sitting={} paralyzed={} immobilized={} alikeDead={} store={} observer={} overloaded={} intention={} blockedFlags={}",
 				stage,
 				phantom.getName(),
 				phantom.getObjectId(),
@@ -154,7 +160,9 @@ public final class PhantomSpawner {
 				(int) phantom.getCurrentMp(), (int) phantom.getMaxMp(),
 				(int) phantom.getCurrentCp(), (int) phantom.getMaxCp(),
 				phantom.isFakeDeath(), phantom.isSitting(), phantom.isParalyzed(), phantom.isImmobilized(), phantom.isAlikeDead(),
-				phantom.getAI() != null ? phantom.getAI().getIntention() : null);
+				phantom.isInStoreMode(), phantom.isInObserverMode(), phantom.isOverloaded(),
+				phantom.getAI() != null ? phantom.getAI().getIntention() : null,
+				PhantomAdapter.blockedStateSummary(phantom));
 	}
 
 	private void restoreBaseClassContext(Player phantom) {

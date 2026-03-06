@@ -18,6 +18,12 @@ public class PhantomBot {
     public boolean firstTick = true;
     public long forceActiveUntilTs;
     public long lastForcedRoamTs;
+    public long lastForcedProbeTs;
+    public int forcedProbeTicksLeft;
+    public int forcedProbeStartX;
+    public int forcedProbeStartY;
+    public int forcedProbeStartZ;
+    public String forcedProbeReason;
 
     // stuck
     public int lastX, lastY, lastZ;
@@ -29,5 +35,8 @@ public class PhantomBot {
         this.lastMoveTs = System.currentTimeMillis();
         this.forceActiveUntilTs = this.lastMoveTs + 8000L;
         this.lastForcedRoamTs = 0L;
+        this.lastForcedProbeTs = 0L;
+        this.forcedProbeTicksLeft = 0;
+        this.forcedProbeReason = "";
     }
 }
