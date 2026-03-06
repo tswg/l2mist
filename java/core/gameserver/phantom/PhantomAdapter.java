@@ -271,7 +271,7 @@ public final class PhantomAdapter {
     }
 
     public static boolean isValidFarmTarget(Player p, NpcInstance n) {
-		return validateFarmTarget(p, n, PhantomConfig.SEARCH_RADIUS, true, null);
+		return validateFarmTarget(p, n, PhantomConfig.SEARCH_RADIUS, true, null) == ValidationResult.OK;
     }
 
 	public static ValidationResult validateFarmTarget(Player p, NpcInstance n, int maxRange, boolean checkLos, StringBuilder reasonOut) {
