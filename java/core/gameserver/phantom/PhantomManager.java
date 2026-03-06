@@ -87,7 +87,7 @@ public final class PhantomManager {
 
             PhantomBot bot = new PhantomBot(p, spot);
 
-            if (i < activeCap) {
+            if (i < PhantomConfig.ACTIVE_CAP) {
                 switchState(bot, PhantomState.ACTIVE, "spawn-active-cap");
                 active.add(bot);
             } else {
