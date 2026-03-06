@@ -314,9 +314,8 @@ public class GameServer
 			_log.info(line);
 
 		MistWorldTeam.info();
-		if (PhantomConfig.ENABLED) {
-			PhantomManager.getInstance().init();
-		}
+		if(Config.ALLOW_PHANTOM_PLAYERS)
+			PhantomPlayers.init();
 	}
 
 	public GameServerListenerList getListeners()
