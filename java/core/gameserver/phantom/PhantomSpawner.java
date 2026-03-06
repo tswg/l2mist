@@ -367,7 +367,18 @@ public final class PhantomSpawner {
 	private ItemTemplate pickMostExpensive(List<ItemTemplate> items) {
 		if (items.isEmpty())
 			return null;
-		items.sort(Comparator.comparingInt(ItemTemplate::getReferencePrice).reversed());
+		Collections.sort(items, new Comparator<ItemTemplate>() {
+			@Override
+			public int compare(ItemTemplate o1, ItemTemplate o2) {
+				int p2 = o2.getReferencePrice();
+				int p1 = o1.getReferencePrice();
+				if (p2 > p1)
+					return 1;
+				if (p2 < p1)
+					return -1;
+				return 0;
+			}
+		});
 		return items.get(0);
 	}
 
