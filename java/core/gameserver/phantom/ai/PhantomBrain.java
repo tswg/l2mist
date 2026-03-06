@@ -34,6 +34,10 @@ public class PhantomBrain {
             int pr = a.priority(ctx);
             if (pr > bestPr) { bestPr = pr; best = a; }
         }
-        if (best != null) best.run(ctx);
+
+        if (best != null)
+            best.run(ctx);
+
+        ctx.syncBack();
     }
 }

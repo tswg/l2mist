@@ -1953,6 +1953,7 @@ public final class Player extends Playable implements PlayerGroup
 		sendPacket(new SkillList(this));
 		sendEtcStatusUpdate();
 		updateStats();
+
 	}
 
 	public int getArmorsExpertisePenalty()
@@ -2489,6 +2490,9 @@ public final class Player extends Playable implements PlayerGroup
 			getNevitSystem().setAddVitality(getNevitSystem().getAddVitality() + Config.ALT_VITALITY_NEVIT_POINT);
 
 		updateStats();
+
+		if(isPhantom())
+			storeCharSubClasses();
 	}
 
 
@@ -5204,25 +5208,25 @@ public final class Player extends Playable implements PlayerGroup
 		Player player = null;
 		Connection con = null;
 		Statement statement = null;
+		Statement statement2 = null;
 		ResultSet rset = null;
+		ResultSet rset2 = null;
 		try
 		{
 			// Retrieve the L2Player from the characters table of the database
 			con = DatabaseFactory.getInstance().getConnection();
 			statement = con.createStatement();
+			statement2 = con.createStatement();
 			rset = statement.executeQuery("SELECT * FROM `characters` WHERE `obj_Id`=" + objectId + " LIMIT 1");
-			if(rset.next())
+			rset2 = statement2.executeQuery("SELECT `class_id` FROM `character_subclasses` WHERE `char_obj_id`=" + objectId + " AND `isBase`=1 LIMIT 1");
+			if(rset.next() && rset2.next())
 			{
-				final int classId = _classIdprefetch[Rnd.get(_classIdprefetch.length)];
+				final int classId = rset2.getInt("class_id");
 				final boolean female = rset.getInt("sex") == 1;
 				final PlayerTemplate template = CharTemplateHolder.getInstance().getTemplate(classId, female);
 
 				player = new Player(objectId, template);
 				player.setIsPhantom(true);
-				//player.setLevel(setLevel);
-				//player.bookmarks.setCapacity(rset.getInt("bookmarks"));
-				//player.bookmarks.restore();
-				//CharacterGroupReuseDAO.getInstance().select(player);
 				player.setName(rset.getString("char_name"));
 				player.setTitle("");
 				player.setHairStyle(rset.getInt("hairStyle"));
@@ -5232,6 +5236,11 @@ public final class Player extends Playable implements PlayerGroup
 				player.setBaseClass(classId);
 				player._login = rset.getString("account_name");
 				player.setReflection(ReflectionManager.DEFAULT);
+
+				player.getInventory().restore();
+				restoreCharSubClasses(player);
+				player.setXYZ(rset.getInt("x"), rset.getInt("y"), rset.getInt("z"));
+				player.updateStats();
 			}
 		}
 		catch(final Exception e)
@@ -5240,6 +5249,7 @@ public final class Player extends Playable implements PlayerGroup
 		}
 		finally
 		{
+			DbUtils.closeQuietly(statement2, rset2);
 			DbUtils.closeQuietly(con, statement, rset);
 		}
 		return player;
@@ -5333,10 +5343,6 @@ public final class Player extends Playable implements PlayerGroup
 	{
 		if(!_storeLock.tryLock())
 			return;
-		Player player = getPlayer();
-		if(player.isPhantom())
-			return;
-
 		try
 		{
 			Connection con = null;

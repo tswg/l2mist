@@ -103,6 +103,10 @@ public final class PhantomAdapter {
 		p.setRunning();
 		p.getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
         p.moveToLocation(loc, 0, true);
+        if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+            _log.debug("[PHANTOM][ai-move] actor={} objId={} from=({}, {}, {}) to=({}, {}, {}) intention={}",
+                    p.getName(), p.getObjectId(), p.getX(), p.getY(), p.getZ(),
+                    loc.getX(), loc.getY(), loc.getZ(), currentIntention(p));
     }
 
 	public static void attack(Player p, Creature target) {
@@ -112,6 +116,10 @@ public final class PhantomAdapter {
 		p.setRunning();
 		p.setTarget(target);
         p.getAI().setIntention(CtrlIntention.AI_INTENTION_ATTACK, target);
+        if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+            _log.debug("[PHANTOM][ai-attack] actor={} objId={} target={} targetObjId={} dist={} intention={}",
+                    p.getName(), p.getObjectId(), target.getName(), target.getObjectId(),
+                    String.format("%.2f", p.getDistance3D(target)), currentIntention(p));
     }
 
     public static void idle(Player p) {

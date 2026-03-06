@@ -61,7 +61,7 @@ public final class PhantomSpawner {
 
 	public Player spawn(PhantomSpot spot, PhantomProfile profile) {
 		int objectId = nextObjectId();
-		Player phantom = Player.restorePhantom(objectId, profile != null ? profile.maxLvl : 1, 0, false);
+		Player phantom = Player.restorePhantom(objectId, 0, 0, false);
 		if (phantom == null)
 			throw new IllegalStateException("Player.restorePhantom returned null for objectId=" + objectId);
 

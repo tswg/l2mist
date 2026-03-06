@@ -7,7 +7,9 @@ import core.gameserver.phantom.model.PhantomSpot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashSet;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -20,11 +22,13 @@ public final class PhantomManager {
     private final Queue<PhantomBot> active = new ConcurrentLinkedQueue<>();
     private final Queue<PhantomBot> idle   = new ConcurrentLinkedQueue<>();
     private final Queue<PhantomBot> sleep  = new ConcurrentLinkedQueue<>();
+    private final Set<Integer> debugTracked = new HashSet<Integer>();
 
     private PhantomManager() {}
 
     public void init() {
         System.out.println("[PHANTOM] PhantomManager init start");
+        debugTracked.clear();
         PhantomWorld.getInstance().loadAll();
         if (!PhantomConfig.ENABLED) {
             System.out.println("[PHANTOM] PhantomManager init aborted: PhantomEnabled=false");
@@ -86,6 +90,8 @@ public final class PhantomManager {
             PhantomAdapter.moveTo(p, PhantomAdapter.loc(spot.centerX, spot.centerY, spot.centerZ));
 
             PhantomBot bot = new PhantomBot(p, spot);
+            if (PhantomConfig.DEBUG && debugTracked.size() < 2)
+                debugTracked.add(p.getObjectId());
 
             if (i < PhantomConfig.ACTIVE_CAP) {
                 switchState(bot, PhantomState.ACTIVE, "spawn-active-cap");
@@ -96,6 +102,26 @@ public final class PhantomManager {
             }
         }
         return stats;
+    }
+
+
+    private static final class TickSnapshot {
+        private final int x;
+        private final int y;
+        private final int z;
+
+        private TickSnapshot(int x, int y, int z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        private static TickSnapshot capture(PhantomBot bot) {
+            Player p = bot != null ? bot.actor : null;
+            if (p == null)
+                return new TickSnapshot(0, 0, 0);
+            return new TickSnapshot(p.getX(), p.getY(), p.getZ());
+        }
     }
 
     private static final class SpawnStats {
@@ -157,9 +183,12 @@ public final class PhantomManager {
             if (bot == null) return;
 
             try {
+                TickSnapshot before = TickSnapshot.capture(bot);
                 PhantomWorld.getInstance().brain().tick(bot);
+                TickSnapshot afterBrain = TickSnapshot.capture(bot);
                 updateState(bot);
-                diagnostic(bot);
+                TickSnapshot afterState = TickSnapshot.capture(bot);
+                diagnostic(bot, before, afterBrain, afterState);
             } catch (Throwable t) {
 				_log.warn("Phantom tick failed for actor={}", bot.actor != null ? bot.actor.getName() : "null", t);
             }
@@ -223,20 +252,29 @@ public final class PhantomManager {
                     bot.actor != null ? bot.actor.getName() : "null", prev, next, reason, bot.noTargetTicks);
     }
 
-    private void diagnostic(PhantomBot bot) {
+    private void diagnostic(PhantomBot bot, TickSnapshot before, TickSnapshot afterBrain, TickSnapshot afterState) {
         Player p = bot.actor;
-        if (p == null || !PhantomAdapter.shouldSampleDiagnostic())
+        if (p == null)
+            return;
+
+        boolean tracked = debugTracked.contains(p.getObjectId());
+        if (!tracked && !PhantomAdapter.shouldSampleDiagnostic())
             return;
 
         boolean hasTarget = bot.target != null && !PhantomAdapter.isDead(bot.target);
         double targetDistance = hasTarget ? PhantomAdapter.dist3D(p, bot.target) : -1d;
 
-        _log.debug("[PHANTOM][diag] actor={} state={} hasTarget={} targetDistance={} intention={} isMoving={} isInCombat={} activeWeapon={}",
-                p.getName(), bot.state, hasTarget, targetDistance,
+        _log.debug("[PHANTOM][diag] actor={} objId={} tracked={} state={} hasTarget={} target={} targetDistance={} intention={} isMoving={} isInCombat={} activeWeapon={} before=({}, {}, {}) afterBrain=({}, {}, {}) afterState=({}, {}, {})",
+                p.getName(), p.getObjectId(), tracked, bot.state, hasTarget,
+                bot.target != null ? (bot.target.getName() + "(" + bot.target.getObjectId() + ")") : "null",
+                targetDistance,
                 PhantomAdapter.currentIntention(p),
                 PhantomAdapter.isMoving(p),
                 PhantomAdapter.isInCombat(p),
-                PhantomAdapter.activeWeapon(p));
+                PhantomAdapter.activeWeapon(p),
+                before.x, before.y, before.z,
+                afterBrain.x, afterBrain.y, afterBrain.z,
+                afterState.x, afterState.y, afterState.z);
     }
 
     private void requeue(PhantomBot bot) {
