@@ -1,6 +1,7 @@
 package core.gameserver.model.phantom;
 
 import core.gameserver.model.Player;
+import core.gameserver.model.Creature;
 import core.gameserver.model.base.Race;
 import core.gameserver.model.instances.NpcInstance;
 import core.gameserver.model.Skill;
@@ -48,7 +49,7 @@ public class PhantomCombatService
 			cast(phantom, target, SkillTable.getInstance().getInfo(3, 2));
 	}
 
-	private void cast(Player phantom, Object target, Skill skill)
+	private void cast(Player phantom, Creature target, Skill skill)
 	{
 		if(skill != null)
 			phantom.doCast(skill, target, true);
