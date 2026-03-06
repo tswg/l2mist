@@ -13,6 +13,7 @@ public class PhantomBot {
     public PhantomState state = PhantomState.IDLE;
 
     public Creature target;
+    public boolean firstTick = true;
 
     // stuck
     public int lastX, lastY, lastZ;
