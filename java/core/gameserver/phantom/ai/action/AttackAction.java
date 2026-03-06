@@ -16,7 +16,8 @@ public class AttackAction implements PhantomAction {
         double hp = PhantomAdapter.hpRatio(ctx.actor);
         if (hp <= PhantomConfig.RETREAT_AT_HP) return false;
         double d = PhantomAdapter.dist3D(ctx.actor, t);
-        return d <= 220;
+        int attackRange = ctx.actor != null ? ctx.actor.getPhysicalAttackRange() + 40 : 160;
+        return d <= attackRange;
     }
 
     @Override
@@ -24,12 +25,27 @@ public class AttackAction implements PhantomAction {
 
     @Override
     public void run(PhantomContext ctx) {
-        if (_log.isInfoEnabled())
-            _log.info("[PHANTOM][AttackAction] actor={} objectId={} target={} dist={}",
+        double dist = PhantomAdapter.dist3D(ctx.actor, ctx.target);
+        int attackRange = ctx.actor != null ? ctx.actor.getPhysicalAttackRange() + 40 : 160;
+        if (dist > attackRange) {
+            PhantomAdapter.moveTo(ctx.actor, PhantomAdapter.location(ctx.target));
+            if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+                _log.debug("[PHANTOM][AttackAction] actor={} objectId={} move-before-attack target={} dist={} range={}",
+                        ctx.actor != null ? ctx.actor.getName() : "null",
+                        ctx.actor != null ? ctx.actor.getObjectId() : 0,
+                        ctx.target != null ? (ctx.target.getName() + "(" + ctx.target.getObjectId() + ")") : "null",
+                        String.format("%.2f", dist),
+                        attackRange);
+            return;
+        }
+
+        if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+            _log.debug("[PHANTOM][AttackAction] actor={} objectId={} target={} dist={} range={}",
                     ctx.actor != null ? ctx.actor.getName() : "null",
                     ctx.actor != null ? ctx.actor.getObjectId() : 0,
                     ctx.target != null ? (ctx.target.getName() + "(" + ctx.target.getObjectId() + ")") : "null",
-                    ctx.target != null ? String.format("%.2f", PhantomAdapter.dist3D(ctx.actor, ctx.target)) : "n/a");
+                    String.format("%.2f", dist),
+                    attackRange);
         PhantomAdapter.attack(ctx.actor, ctx.target);
     }
 }

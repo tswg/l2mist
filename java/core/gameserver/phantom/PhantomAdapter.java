@@ -107,7 +107,6 @@ public final class PhantomAdapter {
     	if(p == null || target == null)
     		return;
 
-		// В этой сборке setTarget перед ATTACK заметно повышает стабильность старта автоатаки.
 		p.setTarget(target);
         p.getAI().setIntention(CtrlIntention.AI_INTENTION_ATTACK, target);
     }
@@ -151,27 +150,15 @@ public final class PhantomAdapter {
 			}
 		});
 
-		int losChecked = 0;
-		int losPassed = 0;
-		for (NpcDistance npcDistance : filtered) {
-			NpcInstance npc = npcDistance.npc;
-			losChecked++;
-			if (canSeeCached(p, npc)) {
-				losPassed++;
-				result.add(npc);
-				if (result.size() >= LOS_TOP_N)
-					break;
-			}
+		int checks = Math.min(LOS_TOP_N, top.size());
+		for (int i = 0; i < checks; i++) {
+			NpcInstance npc = top.get(i).npc;
+			result.add(npc);
 		}
 
-		if (_log.isDebugEnabled() && (rawCount > 0 || result.isEmpty())) {
-			_log.debug("[PHANTOM][around] actor={} radius={} raw={} filtered={} losChecked={} losPassed={} returned={}",
-					p.getName(), radius, rawCount, distanceCount, losChecked, losPassed, result.size());
-		}
-
-		if (_log.isInfoEnabled())
-			_log.info("[PHANTOM][getAroundMonsters] actor={} objectId={} radius={} worldAround={} candidate={} visible={}",
-					p.getName(), p.getObjectId(), radius, around.size(), top.size(), result.size());
+		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+			_log.debug("[PHANTOM][getAroundMonsters] actor={} objectId={} radius={} worldAround={} candidate={} returned={} losTopN={}",
+					p.getName(), p.getObjectId(), radius, around.size(), top.size(), result.size(), checks);
 
 		return result;
     }
@@ -280,15 +267,64 @@ public final class PhantomAdapter {
     }
 
     public static boolean isValidFarmTarget(Player p, NpcInstance n) {
-        if (n == null || n.isDead()) return false;
-        if (!n.isMonster()) return false;
-        if (!n.isVisible()) return false;
-        if (!canSee(p, n)) return false;
-
-        // если есть мирные/ивентовые/неагр:
-        // if (n.isRaid()) return false;
-        // if (n.isInvul()) return false;
-
-        return true;
+		return validateFarmTarget(p, n, PhantomConfig.SEARCH_RADIUS, true, null);
     }
+
+	public static ValidationResult validateFarmTarget(Player p, NpcInstance n, int maxRange, boolean checkLos, StringBuilder reasonOut) {
+		if (p == null) {
+			appendReason(reasonOut, "actor-null");
+			return ValidationResult.ACTOR_NULL;
+		}
+		if (n == null) {
+			appendReason(reasonOut, "target-null");
+			return ValidationResult.TARGET_NULL;
+		}
+		if (n.isDead()) {
+			appendReason(reasonOut, "dead");
+			return ValidationResult.DEAD;
+		}
+		if (!n.isVisible()) {
+			appendReason(reasonOut, "not-visible");
+			return ValidationResult.NOT_VISIBLE;
+		}
+		if (!(n.isMonster() || n.isAttackable(p))) {
+			appendReason(reasonOut, "not-monster-attackable");
+			return ValidationResult.NOT_ATTACKABLE;
+		}
+
+		double dist = dist3D(p, n);
+		if (maxRange > 0 && dist > maxRange) {
+			appendReason(reasonOut, "too-far:" + (int) dist + ">" + maxRange);
+			return ValidationResult.TOO_FAR;
+		}
+
+		if (checkLos && !canSeeCached(p, n)) {
+			appendReason(reasonOut, "los-failed");
+			return ValidationResult.LOS_FAILED;
+		}
+
+		appendReason(reasonOut, "ok");
+		return ValidationResult.OK;
+	}
+
+	private static void appendReason(StringBuilder out, String reason)
+	{
+		if(out == null)
+			return;
+		if(out.length() > 0)
+			out.append(',');
+		out.append(reason);
+	}
+
+	public enum ValidationResult
+	{
+		OK,
+		ACTOR_NULL,
+		TARGET_NULL,
+		DEAD,
+		NOT_VISIBLE,
+		NOT_ATTACKABLE,
+		LOS_FAILED,
+		TOO_FAR
+	}
 }

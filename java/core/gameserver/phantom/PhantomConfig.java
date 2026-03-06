@@ -22,6 +22,7 @@ public final class PhantomConfig {
     public static double MIN_MP_POTION_RATIO;
 
     public static boolean ENABLED;
+    public static boolean DEBUG;
     public static int TOTAL_ONLINE;
     public static int ACTIVE_CAP;
 
@@ -63,6 +64,7 @@ public final class PhantomConfig {
         }
 
         ENABLED = getBool(p, "PhantomEnabled", true);
+        DEBUG = getBool(p, "PhantomDebug", false);
         TOTAL_ONLINE = getInt(p, "PhantomTotalOnline", 200);
         ACTIVE_CAP = getInt(p, "PhantomActiveCap", 60);
 

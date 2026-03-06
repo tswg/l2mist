@@ -6,6 +6,7 @@ import core.gameserver.database.DatabaseFactory;
 import core.gameserver.ai.CtrlIntention;
 import core.gameserver.model.Player;
 import core.gameserver.model.base.InvisibleType;
+import core.gameserver.model.items.Inventory;
 import core.gameserver.model.items.ItemInstance;
 import core.gameserver.phantom.model.PhantomProfile;
 import core.gameserver.phantom.model.PhantomSpot;
@@ -78,17 +79,23 @@ public final class PhantomSpawner {
 		phantom.spawnMe(spawnLoc);
 		phantom.setRunning();
 		phantom.getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
-		_log.info("[PHANTOM][SPAWN] after spawn name={} objectId={} activeWeapon={} inventorySize={}",
+		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+			_log.debug("[PHANTOM][SPAWN] after spawn name={} objectId={} activeWeapon={} inventorySize={}",
 				phantom.getName(), phantom.getObjectId(),
 				phantom.getActiveWeaponInstance() != null ? phantom.getActiveWeaponInstance().getItemId() : 0,
 				phantom.getInventory() != null ? phantom.getInventory().getSize() : 0);
 
 		ensureBasicEquipment(phantom);
 		ensureConsumables(phantom);
+		phantom.getInventory().validateItems();
+		phantom.getInventory().refreshEquip();
 		phantom.sendUserInfo(true);
 		phantom.broadcastUserInfo(true);
 		phantom.broadcastCharInfo();
-		_log.info("[PHANTOM][SPAWN] after equip name={} objectId={} activeWeapon={} inventorySize={}",
+		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+			logPaperdoll(phantom, "after-equip");
+		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+			_log.debug("[PHANTOM][SPAWN] after equip name={} objectId={} activeWeapon={} inventorySize={}",
 				phantom.getName(), phantom.getObjectId(),
 				phantom.getActiveWeaponInstance() != null ? phantom.getActiveWeaponInstance().getItemId() : 0,
 				phantom.getInventory() != null ? phantom.getInventory().getSize() : 0);
@@ -130,9 +137,35 @@ public final class PhantomSpawner {
 				if (item.getTemplate().getType2() == ItemTemplate.TYPE2_WEAPON && phantom.getActiveWeaponInstance() != null)
 					continue;
 
-				phantom.getInventory().equipItem(item);
+				try {
+					phantom.getInventory().equipItem(item);
+				} catch (Exception e) {
+					_log.warn("[PHANTOM][SPAWN] equip failed name={} objectId={} itemId={}", phantom.getName(), phantom.getObjectId(), item.getItemId(), e);
+				}
 			}
 		}
+	}
+
+
+	private void logPaperdoll(Player phantom, String stage)
+	{
+		if (phantom == null || phantom.getInventory() == null)
+			return;
+
+		_log.debug("[PHANTOM][SPAWN] paperdoll stage={} name={} objectId={} weapon={} chest={} legs={} gloves={} feet={}",
+				stage,
+				phantom.getName(),
+				phantom.getObjectId(),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_RHAND),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_CHEST),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_LEGS),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_GLOVES),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_FEET));
+	}
+
+	private int paperdollItemId(Player phantom, int slot)
+	{
+		return phantom.getInventory().getPaperdollItemId(slot);
 	}
 
 	private void ensureConsumables(Player phantom) {
