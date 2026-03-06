@@ -184,11 +184,12 @@ public final class PhantomManager {
 
             try {
                 TickSnapshot before = TickSnapshot.capture(bot);
+                PhantomState stateBeforeTick = bot.state;
                 PhantomWorld.getInstance().brain().tick(bot);
                 TickSnapshot afterBrain = TickSnapshot.capture(bot);
                 updateState(bot);
                 TickSnapshot afterState = TickSnapshot.capture(bot);
-                diagnostic(bot, before, afterBrain, afterState);
+                diagnostic(bot, stateBeforeTick, before, afterBrain, afterState);
             } catch (Throwable t) {
 				_log.warn("Phantom tick failed for actor={}", bot.actor != null ? bot.actor.getName() : "null", t);
             }
@@ -199,6 +200,11 @@ public final class PhantomManager {
 
     private void updateState(PhantomBot bot) {
         Player p = bot.actor;
+
+        if (System.currentTimeMillis() < bot.forceActiveUntilTs) {
+            switchState(bot, PhantomState.ACTIVE, "force-active-after-spawn");
+            return;
+        }
 
         if (bot.firstTick) {
             bot.firstTick = false;
@@ -252,7 +258,7 @@ public final class PhantomManager {
                     bot.actor != null ? bot.actor.getName() : "null", prev, next, reason, bot.noTargetTicks);
     }
 
-    private void diagnostic(PhantomBot bot, TickSnapshot before, TickSnapshot afterBrain, TickSnapshot afterState) {
+    private void diagnostic(PhantomBot bot, PhantomState stateBeforeTick, TickSnapshot before, TickSnapshot afterBrain, TickSnapshot afterState) {
         Player p = bot.actor;
         if (p == null)
             return;
@@ -264,8 +270,8 @@ public final class PhantomManager {
         boolean hasTarget = bot.target != null && !PhantomAdapter.isDead(bot.target);
         double targetDistance = hasTarget ? PhantomAdapter.dist3D(p, bot.target) : -1d;
 
-        _log.debug("[PHANTOM][diag] actor={} objId={} tracked={} state={} hasTarget={} target={} targetDistance={} intention={} isMoving={} isInCombat={} activeWeapon={} before=({}, {}, {}) afterBrain=({}, {}, {}) afterState=({}, {}, {})",
-                p.getName(), p.getObjectId(), tracked, bot.state, hasTarget,
+        _log.debug("[PHANTOM][diag] actor={} objId={} tracked={} stateBeforeTick={} stateAfterTick={} hasTarget={} target={} targetDistance={} intention={} isMoving={} isInCombat={} activeWeapon={} before=({}, {}, {}) afterBrain=({}, {}, {}) afterState=({}, {}, {})",
+                p.getName(), p.getObjectId(), tracked, stateBeforeTick, bot.state, hasTarget,
                 bot.target != null ? (bot.target.getName() + "(" + bot.target.getObjectId() + ")") : "null",
                 targetDistance,
                 PhantomAdapter.currentIntention(p),

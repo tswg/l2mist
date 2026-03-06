@@ -4,15 +4,18 @@ import core.commons.dbutils.DbUtils;
 import core.commons.util.Rnd;
 import core.gameserver.database.DatabaseFactory;
 import core.gameserver.ai.CtrlIntention;
+import core.gameserver.data.xml.holder.ItemHolder;
 import core.gameserver.model.Player;
 import core.gameserver.model.SubClass;
+import core.gameserver.model.base.ClassId;
 import core.gameserver.model.base.InvisibleType;
 import core.gameserver.model.items.Inventory;
 import core.gameserver.model.items.ItemInstance;
 import core.gameserver.phantom.model.PhantomProfile;
 import core.gameserver.phantom.model.PhantomSpot;
-import core.gameserver.templates.item.CreateItem;
+import core.gameserver.templates.item.ArmorTemplate;
 import core.gameserver.templates.item.ItemTemplate;
+import core.gameserver.templates.item.WeaponTemplate;
 import core.gameserver.utils.ItemFunctions;
 import core.gameserver.utils.Location;
 import org.slf4j.Logger;
@@ -23,6 +26,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -65,16 +69,13 @@ public final class PhantomSpawner {
 		if (phantom == null)
 			throw new IllegalStateException("Player.restorePhantom returned null for objectId=" + objectId);
 
-		// restorePhantom may return player without active class context; this breaks
-		// equipment validation paths via Player#getActiveClassId().
-		if (phantom.getActiveClass() == null) {
-			SubClass base = new SubClass();
-			base.setClassId(phantom.getBaseClassId());
-			base.setBase(true);
-			base.setActive(true);
-			phantom.setActiveClass(base);
-			phantom.getSubClasses().put(base.getClassId(), base);
-		}
+		if (phantom.getActiveClass() == null)
+			restoreBaseClassContext(phantom);
+
+		final int lvl = phantom.getLevel();
+		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+			_log.debug("[PHANTOM][SPAWN] restored name={} objectId={} classId={} level={} exp={} hp={}/{}",
+				phantom.getName(), phantom.getObjectId(), phantom.getActiveClassId(), lvl, phantom.getExp(), (int) phantom.getCurrentHp(), (int) phantom.getMaxHp());
 
 		Location spawnLoc = randomPointAround(spot);
 
@@ -84,20 +85,19 @@ public final class PhantomSpawner {
 		phantom.setOnlineStatus(true);
 		phantom.setInvisibleType(InvisibleType.NONE);
 		phantom.setNonAggroTime(Long.MAX_VALUE);
-		phantom.setCurrentHpMp(phantom.getMaxHp(), phantom.getMaxMp());
-		phantom.setCurrentCp(phantom.getMaxCp());
+		resetSpawnState(phantom, "before-spawn");
 		phantom.setPhantomLoc(spawnLoc.getX(), spawnLoc.getY(), spawnLoc.getZ());
 		phantom.setXYZ(spawnLoc.getX(), spawnLoc.getY(), spawnLoc.getZ());
 		phantom.spawnMe(spawnLoc);
-		phantom.setRunning();
-		phantom.getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
+		resetSpawnState(phantom, "after-spawn");
+
 		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
-			_log.debug("[PHANTOM][SPAWN] after spawn name={} objectId={} activeWeapon={} inventorySize={}",
-				phantom.getName(), phantom.getObjectId(),
+			_log.debug("[PHANTOM][SPAWN] after spawn name={} objectId={} classId={} level={} exp={} hp={}/{} activeWeapon={} inventorySize={}",
+				phantom.getName(), phantom.getObjectId(), phantom.getActiveClassId(), phantom.getLevel(), phantom.getExp(), (int) phantom.getCurrentHp(), (int) phantom.getMaxHp(),
 				phantom.getActiveWeaponInstance() != null ? phantom.getActiveWeaponInstance().getItemId() : 0,
 				phantom.getInventory() != null ? phantom.getInventory().getSize() : 0);
 
-		ensureBasicEquipment(phantom);
+		equipByGrade(phantom);
 		ensureConsumables(phantom);
 		phantom.getInventory().validateItems();
 		phantom.getInventory().refreshEquip();
@@ -107,11 +107,97 @@ public final class PhantomSpawner {
 		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
 			logPaperdoll(phantom, "after-equip");
 		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
-			_log.debug("[PHANTOM][SPAWN] after equip name={} objectId={} activeWeapon={} inventorySize={}",
-				phantom.getName(), phantom.getObjectId(),
+			_log.debug("[PHANTOM][SPAWN] after equip name={} objectId={} classId={} level={} exp={} activeWeapon={} inventorySize={}",
+				phantom.getName(), phantom.getObjectId(), phantom.getActiveClassId(), phantom.getLevel(), phantom.getExp(),
 				phantom.getActiveWeaponInstance() != null ? phantom.getActiveWeaponInstance().getItemId() : 0,
 				phantom.getInventory() != null ? phantom.getInventory().getSize() : 0);
 		return phantom;
+	}
+
+	private void resetSpawnState(Player phantom, String stage) {
+		if (phantom.getCurrentHp() <= 0 || phantom.isDead())
+			phantom.doRevive();
+
+		phantom.setCurrentHpMp(phantom.getMaxHp(), phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+		if (phantom.isFakeDeath())
+			phantom.setFakeDeath(false);
+		if (phantom.isSitting())
+			phantom.setSitting(false);
+		if (phantom.isSleeping())
+			phantom.stopSleeping();
+		if (phantom.isParalyzed())
+			phantom.stopParalyzed();
+		if (phantom.isImmobilized())
+			phantom.stopImmobilized();
+		if (phantom.isRooted())
+			phantom.stopRooted();
+		if (phantom.isStunned())
+			phantom.stopStunning();
+		phantom.abortAttack(true, false);
+		phantom.abortCast(true, false);
+		phantom.stopMove(false);
+		phantom.setTarget(null);
+		phantom.setRunning();
+		phantom.getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
+
+		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+			_log.debug("[PHANTOM][SPAWN] state-reset stage={} name={} objectId={} dead={} hp={}/{} mp={}/{} cp={}/{} fakeDeath={} sitting={} paralyzed={} immobilized={} alikeDead={} intention={}",
+				stage,
+				phantom.getName(),
+				phantom.getObjectId(),
+				phantom.isDead(),
+				(int) phantom.getCurrentHp(), (int) phantom.getMaxHp(),
+				(int) phantom.getCurrentMp(), (int) phantom.getMaxMp(),
+				(int) phantom.getCurrentCp(), (int) phantom.getMaxCp(),
+				phantom.isFakeDeath(), phantom.isSitting(), phantom.isParalyzed(), phantom.isImmobilized(), phantom.isAlikeDead(),
+				phantom.getAI() != null ? phantom.getAI().getIntention() : null);
+	}
+
+	private void restoreBaseClassContext(Player phantom) {
+		SubClass fromDb = loadBaseSubClass(phantom.getObjectId());
+		if (fromDb != null) {
+			phantom.getSubClasses().put(fromDb.getClassId(), fromDb);
+			phantom.setActiveClass(fromDb);
+			return;
+		}
+
+		SubClass base = new SubClass();
+		base.setClassId(phantom.getBaseClassId());
+		base.setBase(true);
+		base.setActive(true);
+		phantom.setActiveClass(base);
+		phantom.getSubClasses().put(base.getClassId(), base);
+	}
+
+	private SubClass loadBaseSubClass(int objectId) {
+		Connection con = null;
+		PreparedStatement st = null;
+		ResultSet rs = null;
+		try {
+			con = DatabaseFactory.getInstance().getConnection();
+			st = con.prepareStatement("SELECT class_id, exp, sp, curHp, curMp, curCp FROM character_subclasses WHERE char_obj_id=? AND isBase=1 LIMIT 1");
+			st.setInt(1, objectId);
+			rs = st.executeQuery();
+			if (!rs.next())
+				return null;
+
+			SubClass subClass = new SubClass();
+			subClass.setBase(true);
+			subClass.setClassId(rs.getInt("class_id"));
+			subClass.setExp(rs.getLong("exp"));
+			subClass.setSp(rs.getLong("sp"));
+			subClass.setHp(rs.getDouble("curHp"));
+			subClass.setMp(rs.getDouble("curMp"));
+			subClass.setCp(rs.getDouble("curCp"));
+			subClass.setActive(true);
+			return subClass;
+		} catch (Exception e) {
+			_log.warn("[PHANTOM][SPAWN] failed to load base subclass data for objectId={}", objectId, e);
+			return null;
+		} finally {
+			DbUtils.closeQuietly(con, st, rs);
+		}
 	}
 
 	private int nextObjectId() {
@@ -135,29 +221,178 @@ public final class PhantomSpawner {
 		return new Location(x, y, spot.centerZ);
 	}
 
-	private void ensureBasicEquipment(Player phantom) {
-		if (phantom.getInventory() == null)
-			return;
+	private enum GearGrade {
+		NG(ItemTemplate.Grade.NONE), D(ItemTemplate.Grade.D), C(ItemTemplate.Grade.C), B(ItemTemplate.Grade.B), A(ItemTemplate.Grade.A), S(ItemTemplate.Grade.S);
+		private final ItemTemplate.Grade crystal;
+		GearGrade(ItemTemplate.Grade crystal) { this.crystal = crystal; }
+	}
 
-		for (CreateItem createItem : phantom.getTemplate().getItems()) {
-			ItemInstance item = ItemFunctions.createItem(createItem.getItemId());
-			if (item == null)
-				continue;
+	private enum Archetype { WARRIOR, MAGE, ARCHER }
 
-			phantom.getInventory().addItem(item);
-			if (createItem.isEquipable() && item.isEquipable()) {
-				if (item.getTemplate().getType2() == ItemTemplate.TYPE2_WEAPON && phantom.getActiveWeaponInstance() != null)
-					continue;
+	private GearGrade gradeByLevel(int level) {
+		if (level >= 76)
+			return GearGrade.S;
+		if (level >= 61)
+			return GearGrade.A;
+		if (level >= 52)
+			return GearGrade.B;
+		if (level >= 40)
+			return GearGrade.C;
+		if (level >= 20)
+			return GearGrade.D;
+		return GearGrade.NG;
+	}
 
-				try {
-					phantom.getInventory().equipItem(item);
-				} catch (Exception e) {
-					_log.warn("[PHANTOM][SPAWN_ERROR] equip failed name={} objectId={} itemId={}", phantom.getName(), phantom.getObjectId(), item.getItemId(), e);
-				}
-			}
+	private Archetype detectArchetype(Player phantom) {
+		ClassId classId = ClassId.VALUES[phantom.getActiveClassId()];
+		if (classId == null)
+			return Archetype.WARRIOR;
+		if (classId.isMage())
+			return Archetype.MAGE;
+		if (isArcherClass(classId))
+			return Archetype.ARCHER;
+		return Archetype.WARRIOR;
+	}
+
+	private boolean isArcherClass(ClassId classId) {
+		switch (classId) {
+			case hawkeye:
+			case silverRanger:
+			case phantomRanger:
+			case sagittarius:
+			case moonlightSentinel:
+			case ghostSentinel:
+			case arbalester:
+			case trickster:
+				return true;
+			default:
+				return false;
 		}
 	}
 
+	private void equipByGrade(Player phantom) {
+		if (phantom.getInventory() == null)
+			return;
+
+		final GearGrade maxGrade = gradeByLevel(phantom.getLevel());
+		final Archetype archetype = detectArchetype(phantom);
+
+		unequipCombatSlots(phantom);
+		equipBestWeapon(phantom, maxGrade, archetype);
+		equipArmorSet(phantom, maxGrade, archetype);
+
+		if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+			_log.debug("[PHANTOM][SPAWN] grade-equip name={} objectId={} classId={} level={} grade={} archetype={} weapon={} chest={} legs={} gloves={} feet={}",
+				phantom.getName(), phantom.getObjectId(), phantom.getActiveClassId(), phantom.getLevel(), maxGrade, archetype,
+				paperdollItemId(phantom, Inventory.PAPERDOLL_RHAND),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_CHEST),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_LEGS),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_GLOVES),
+				paperdollItemId(phantom, Inventory.PAPERDOLL_FEET));
+	}
+
+	private void unequipCombatSlots(Player phantom) {
+		for (int slot : new int[]{Inventory.PAPERDOLL_RHAND, Inventory.PAPERDOLL_LHAND, Inventory.PAPERDOLL_CHEST, Inventory.PAPERDOLL_LEGS, Inventory.PAPERDOLL_GLOVES, Inventory.PAPERDOLL_FEET, Inventory.PAPERDOLL_HEAD}) {
+			ItemInstance it = phantom.getInventory().getPaperdollItem(slot);
+			if (it != null)
+				phantom.getInventory().unEquipItem(it);
+		}
+	}
+
+	private void equipBestWeapon(Player phantom, GearGrade maxGrade, Archetype archetype) {
+		List<ItemTemplate> candidates = new ArrayList<ItemTemplate>();
+		for (ItemTemplate item : ItemHolder.getInstance().getAllTemplates()) {
+			if (item == null || !item.isWeapon())
+				continue;
+			if (item.getBodyPart() != ItemTemplate.SLOT_R_HAND && item.getBodyPart() != ItemTemplate.SLOT_LR_HAND)
+				continue;
+			if (!isAllowedGrade(item.getCrystalType(), maxGrade))
+				continue;
+			WeaponTemplate.WeaponType type = ((WeaponTemplate) item).getItemType();
+			if (!weaponFits(type, archetype))
+				continue;
+			candidates.add(item);
+		}
+
+		ItemTemplate best = pickMostExpensive(candidates);
+		if (best != null)
+			equipTemplateItem(phantom, best);
+	}
+
+	private void equipArmorSet(Player phantom, GearGrade maxGrade, Archetype archetype) {
+		ArmorTemplate.ArmorType desired = archetype == Archetype.MAGE ? ArmorTemplate.ArmorType.MAGIC : (archetype == Archetype.ARCHER ? ArmorTemplate.ArmorType.LIGHT : ArmorTemplate.ArmorType.HEAVY);
+		for (int bodyPart : new int[]{ItemTemplate.SLOT_CHEST, ItemTemplate.SLOT_LEGS, ItemTemplate.SLOT_GLOVES, ItemTemplate.SLOT_FEET}) {
+			ItemTemplate best = pickBestArmor(bodyPart, desired, maxGrade);
+			if (best != null)
+				equipTemplateItem(phantom, best);
+		}
+	}
+
+	private ItemTemplate pickBestArmor(int bodyPart, ArmorTemplate.ArmorType desired, GearGrade maxGrade) {
+		List<ItemTemplate> candidates = new ArrayList<ItemTemplate>();
+		for (ItemTemplate item : ItemHolder.getInstance().getAllTemplates()) {
+			if (item == null || !item.isArmor())
+				continue;
+			if (!isAllowedGrade(item.getCrystalType(), maxGrade))
+				continue;
+			if (item.getBodyPart() != bodyPart)
+				continue;
+			ArmorTemplate.ArmorType type = ((ArmorTemplate) item).getItemType();
+			if (type != desired)
+				continue;
+			candidates.add(item);
+		}
+		return pickMostExpensive(candidates);
+	}
+
+	private boolean isAllowedGrade(ItemTemplate.Grade itemGrade, GearGrade maxGrade) {
+		ItemTemplate.Grade normalized = normalizeGrade(itemGrade);
+		return normalized.externalOrdinal <= maxGrade.crystal.externalOrdinal;
+	}
+
+	private ItemTemplate.Grade normalizeGrade(ItemTemplate.Grade grade) {
+		if (grade == ItemTemplate.Grade.S80 || grade == ItemTemplate.Grade.S84)
+			return ItemTemplate.Grade.S;
+		return grade;
+	}
+
+	private boolean weaponFits(WeaponTemplate.WeaponType type, Archetype archetype) {
+		if (archetype == Archetype.MAGE)
+			return type == WeaponTemplate.WeaponType.BLUNT || type == WeaponTemplate.WeaponType.BIGBLUNT || type == WeaponTemplate.WeaponType.SWORD;
+		if (archetype == Archetype.ARCHER)
+			return type == WeaponTemplate.WeaponType.BOW || type == WeaponTemplate.WeaponType.CROSSBOW;
+		return type == WeaponTemplate.WeaponType.SWORD || type == WeaponTemplate.WeaponType.BLUNT || type == WeaponTemplate.WeaponType.BIGSWORD || type == WeaponTemplate.WeaponType.BIGBLUNT || type == WeaponTemplate.WeaponType.DAGGER || type == WeaponTemplate.WeaponType.DUAL || type == WeaponTemplate.WeaponType.DUALDAGGER;
+	}
+
+	private ItemTemplate pickMostExpensive(List<ItemTemplate> items) {
+		if (items.isEmpty())
+			return null;
+		Collections.sort(items, new Comparator<ItemTemplate>() {
+			@Override
+			public int compare(ItemTemplate o1, ItemTemplate o2) {
+				int p2 = o2.getReferencePrice();
+				int p1 = o1.getReferencePrice();
+				if (p2 > p1)
+					return 1;
+				if (p2 < p1)
+					return -1;
+				return 0;
+			}
+		});
+		return items.get(0);
+	}
+
+	private void equipTemplateItem(Player phantom, ItemTemplate template) {
+		ItemInstance item = ItemFunctions.createItem(template.getItemId());
+		if (item == null)
+			return;
+		phantom.getInventory().addItem(item);
+		try {
+			phantom.getInventory().equipItem(item);
+		} catch (Exception e) {
+			_log.warn("[PHANTOM][SPAWN_ERROR] equip failed name={} objectId={} itemId={}", phantom.getName(), phantom.getObjectId(), item.getItemId(), e);
+		}
+	}
 
 	private void logPaperdoll(Player phantom, String stage)
 	{
