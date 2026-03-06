@@ -5,6 +5,7 @@ import core.commons.util.Rnd;
 import core.gameserver.database.DatabaseFactory;
 import core.gameserver.ai.CtrlIntention;
 import core.gameserver.model.Player;
+import core.gameserver.model.SubClass;
 import core.gameserver.model.base.InvisibleType;
 import core.gameserver.model.items.Inventory;
 import core.gameserver.model.items.ItemInstance;
@@ -63,6 +64,17 @@ public final class PhantomSpawner {
 		Player phantom = Player.restorePhantom(objectId, profile != null ? profile.maxLvl : 1, 0, false);
 		if (phantom == null)
 			throw new IllegalStateException("Player.restorePhantom returned null for objectId=" + objectId);
+
+		// restorePhantom may return player without active class context; this breaks
+		// equipment validation paths via Player#getActiveClassId().
+		if (phantom.getActiveClass() == null) {
+			SubClass base = new SubClass();
+			base.setClassId(phantom.getBaseClassId());
+			base.setBase(true);
+			base.setActive(true);
+			phantom.setActiveClass(base);
+			phantom.getSubClasses().put(base.getClassId(), base);
+		}
 
 		Location spawnLoc = randomPointAround(spot);
 
