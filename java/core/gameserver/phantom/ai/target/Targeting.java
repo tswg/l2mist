@@ -17,17 +17,19 @@ public final class Targeting {
 
     public static NpcInstance findBestMob(Player p, int radius) {
         List<NpcInstance> mobs = PhantomAdapter.getAroundMonsters(p, radius);
+        int aroundCount = mobs != null ? mobs.size() : 0;
         if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
             _log.debug("[PHANTOM][Targeting] actor={} objectId={} radius={} aroundMonsters={}",
                     p != null ? p.getName() : "null",
                     p != null ? p.getObjectId() : 0,
                     radius,
-                    mobs != null ? mobs.size() : 0);
+                    aroundCount);
 
         NpcInstance best = null;
         double bestScore = -1e18;
         NpcInstance fallback = null;
         double fallbackDist = Double.MAX_VALUE;
+        String finalNullReason = "no-candidates";
         List<String> rejectReasons = new ArrayList<String>();
 
         if (mobs != null) {
@@ -49,8 +51,9 @@ public final class Targeting {
                         rejectReasons.add((n != null ? n.getName() + "(" + n.getObjectId() + ")" : "null") + "=" + reason.toString());
                 }
 
-                PhantomAdapter.ValidationResult fallbackResult = PhantomAdapter.validateFarmTarget(p, n, radius, false, null);
-                if (fallbackResult == PhantomAdapter.ValidationResult.OK) {
+                // Step B fallback: intentionally relaxed - no LOS and no strict validator,
+                // only minimal runtime-safe checks.
+                if (n != null && !n.isDead() && n.isVisible() && (n.isMonster() || n.isAttackable(p))) {
                     double fd = PhantomAdapter.dist3D(p, n);
                     if (fd < fallbackDist) {
                         fallbackDist = fd;
@@ -62,11 +65,21 @@ public final class Targeting {
 
         if (best == null && fallback != null) {
             best = fallback;
+            finalNullReason = "strict-rejected-all-used-relaxed-fallback";
             if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
                 _log.debug("[PHANTOM][Targeting] actor={} objectId={} fallbackTarget={} reason=no-strict-target",
                         p != null ? p.getName() : "null",
                         p != null ? p.getObjectId() : 0,
                         fallback.getName() + "(" + fallback.getObjectId() + ")");
+        } else if (best == null) {
+            finalNullReason = aroundCount == 0 ? "around-empty" : "strict-and-relaxed-fallback-failed";
+            if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
+                _log.debug("[PHANTOM][Targeting] actor={} objectId={} selectedTarget=null reason={} aroundMonsters={} strictRejects={}",
+                        p != null ? p.getName() : "null",
+                        p != null ? p.getObjectId() : 0,
+                        finalNullReason,
+                        aroundCount,
+                        rejectReasons.size());
         }
 
         if (_log.isDebugEnabled() && PhantomConfig.DEBUG && !rejectReasons.isEmpty())
@@ -80,6 +93,13 @@ public final class Targeting {
                     p != null ? p.getName() : "null",
                     p != null ? p.getObjectId() : 0,
                     best != null ? (best.getName() + "(" + best.getObjectId() + ")") : "null");
+
+        if (aroundCount > 0 && best == null)
+            _log.warn("[PHANTOM][TargetingGuard] actor={} objectId={} aroundMonsters={} selectedTarget=null assert-guard reason={}",
+                    p != null ? p.getName() : "null",
+                    p != null ? p.getObjectId() : 0,
+                    aroundCount,
+                    finalNullReason);
         return best;
     }
 
