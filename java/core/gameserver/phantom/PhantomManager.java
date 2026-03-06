@@ -16,13 +16,15 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class PhantomManager {
 	private static final Logger _log = LoggerFactory.getLogger(PhantomManager.class);
 	private static final long TRACKED_FORCED_ROAM_INTERVAL_MS = 4500L;
+	private static final long TRACKED_FORCED_PROBE_INTERVAL_MS = 7000L;
+	private static final int FORCED_PROBE_TICKS = 5;
 
     private static final PhantomManager INSTANCE = new PhantomManager();
     public static PhantomManager getInstance() { return INSTANCE; }
 
-    private final Queue<PhantomBot> active = new ConcurrentLinkedQueue<>();
-    private final Queue<PhantomBot> idle   = new ConcurrentLinkedQueue<>();
-    private final Queue<PhantomBot> sleep  = new ConcurrentLinkedQueue<>();
+    private final Queue<PhantomBot> active = new ConcurrentLinkedQueue<PhantomBot>();
+    private final Queue<PhantomBot> idle   = new ConcurrentLinkedQueue<PhantomBot>();
+    private final Queue<PhantomBot> sleep  = new ConcurrentLinkedQueue<PhantomBot>();
     private final Set<Integer> debugTracked = new HashSet<Integer>();
 
     private PhantomManager() {}
@@ -91,7 +93,7 @@ public final class PhantomManager {
             PhantomAdapter.moveTo(p, PhantomAdapter.loc(spot.centerX, spot.centerY, spot.centerZ));
 
             PhantomBot bot = new PhantomBot(p, spot);
-            if (PhantomConfig.DEBUG && debugTracked.size() < 2)
+            if (PhantomConfig.DEBUG && debugTracked.isEmpty())
                 debugTracked.add(p.getObjectId());
 
             if (i < PhantomConfig.ACTIVE_CAP) {
@@ -122,6 +124,12 @@ public final class PhantomManager {
             if (p == null)
                 return new TickSnapshot(0, 0, 0);
             return new TickSnapshot(p.getX(), p.getY(), p.getZ());
+        }
+
+        private int chebyshevDistance(TickSnapshot to) {
+            if (to == null)
+                return 0;
+            return Math.max(Math.abs(x - to.x), Math.abs(y - to.y));
         }
     }
 
@@ -189,11 +197,13 @@ public final class PhantomManager {
                 String intentionBefore = PhantomAdapter.currentIntention(bot.actor);
                 String targetBefore = bot.target != null ? (bot.target.getName() + "(" + bot.target.getObjectId() + ")") : "null";
                 forceTrackedRoamIfNeeded(bot);
+                forceTrackedDirectMoveProbeIfNeeded(bot, before, "tick");
                 PhantomWorld.getInstance().brain().tick(bot);
                 TickSnapshot afterBrain = TickSnapshot.capture(bot);
                 String intentionAfterBrain = PhantomAdapter.currentIntention(bot.actor);
                 updateState(bot);
                 TickSnapshot afterState = TickSnapshot.capture(bot);
+                updateProbeProgress(bot, before, afterState);
                 diagnostic(bot, stateBeforeTick, intentionBefore, intentionAfterBrain, targetBefore, before, afterBrain, afterState);
             } catch (Throwable t) {
 				_log.warn("Phantom tick failed for actor={}", bot.actor != null ? bot.actor.getName() : "null", t);
@@ -217,7 +227,6 @@ public final class PhantomManager {
             return;
         }
 
-        // если есть цель/в бою -> ACTIVE
         boolean hasTarget = bot.target != null && !PhantomAdapter.isDead(bot.target);
         boolean inCombat = PhantomAdapter.isInCombat(p);
 
@@ -230,19 +239,16 @@ public final class PhantomManager {
         bot.noTargetTicks++;
         long inStateMs = System.currentTimeMillis() - bot.stateSinceTs;
 
-        // не усыпляем слишком рано: минимум несколько тиков без цели.
         if (bot.state == PhantomState.ACTIVE && bot.noTargetTicks < 6) {
             return;
         }
 
-        // если далеко от спота — IDLE (идёт домой)
         double distToSpot = PhantomAdapter.dist2D(p, bot.spot.centerX, bot.spot.centerY);
         if (distToSpot > PhantomConfig.LEASH_TO_SPOT * 0.6) {
             switchState(bot, PhantomState.IDLE, "return-to-spot");
             return;
         }
 
-        // иначе часть спит, часть idle (для “жизни”), но не чаще чем раз в 5 секунд.
         if (inStateMs < 5000L)
             return;
 
@@ -275,7 +281,7 @@ public final class PhantomManager {
         boolean hasTarget = bot.target != null && !PhantomAdapter.isDead(bot.target);
         double targetDistance = hasTarget ? PhantomAdapter.dist3D(p, bot.target) : -1d;
 
-        _log.debug("[PHANTOM][diag] actor={} objId={} tracked={} stateBeforeTick={} stateAfterTick={} targetBefore={} targetAfter={} intentionBefore={} intentionAfterBrain={} intentionAfterState={} isMoving={} isInCombat={} distToTarget={} coordsBefore=({}, {}, {}) coordsAfterBrain=({}, {}, {}) coordsAfterState=({}, {}, {}) updateStateResult={} ",
+        _log.debug("[PHANTOM][diag] actor={} objId={} tracked={} stateBeforeTick={} stateAfterTick={} targetBefore={} targetAfter={} intentionBefore={} intentionAfterBrain={} intentionAfterState={} isMoving={} isInCombat={} distToTarget={} coordsBefore=({}, {}, {}) coordsAfterBrain=({}, {}, {}) coordsAfterState=({}, {}, {}) blockedFlags={} updateStateResult={} ",
                 p.getName(), p.getObjectId(), tracked, stateBeforeTick, bot.state,
                 targetBefore,
                 bot.target != null ? (bot.target.getName() + "(" + bot.target.getObjectId() + ")") : "null",
@@ -288,6 +294,7 @@ public final class PhantomManager {
                 before.x, before.y, before.z,
                 afterBrain.x, afterBrain.y, afterBrain.z,
                 afterState.x, afterState.y, afterState.z,
+                PhantomAdapter.blockedStateSummary(p),
                 bot.state.name());
     }
 
@@ -307,11 +314,73 @@ public final class PhantomManager {
 
         int dx = ThreadLocalRandom.current().nextInt(401) - 200;
         int dy = ThreadLocalRandom.current().nextInt(401) - 200;
-        PhantomAdapter.moveTo(p, PhantomAdapter.loc(p.getX() + dx, p.getY() + dy, p.getZ()));
+        boolean started = PhantomAdapter.moveTo(p, PhantomAdapter.loc(p.getX() + dx, p.getY() + dy, p.getZ()));
         bot.lastForcedRoamTs = now;
 
-        _log.debug("[PHANTOM][forced-roam] actor={} objId={} to=({}, {}, {})",
-                p.getName(), p.getObjectId(), p.getX() + dx, p.getY() + dy, p.getZ());
+        _log.debug("[PHANTOM][forced-roam] actor={} objId={} to=({}, {}, {}) started={} snapshot={}",
+                p.getName(), p.getObjectId(), p.getX() + dx, p.getY() + dy, p.getZ(), started, PhantomAdapter.movementDebugSnapshot(p));
+    }
+
+    private void forceTrackedDirectMoveProbeIfNeeded(PhantomBot bot, TickSnapshot before, String reason) {
+        Player p = bot.actor;
+        if (p == null)
+            return;
+        if (!PhantomConfig.DEBUG || !debugTracked.contains(p.getObjectId()))
+            return;
+
+        long now = System.currentTimeMillis();
+        if (now - bot.lastForcedProbeTs < TRACKED_FORCED_PROBE_INTERVAL_MS)
+            return;
+
+        int dx = ThreadLocalRandom.current().nextInt(241) - 120;
+        int dy = ThreadLocalRandom.current().nextInt(241) - 120;
+        bot.forcedProbeTicksLeft = FORCED_PROBE_TICKS;
+        bot.forcedProbeStartX = before.x;
+        bot.forcedProbeStartY = before.y;
+        bot.forcedProbeStartZ = before.z;
+        bot.forcedProbeReason = reason;
+        boolean started = PhantomAdapter.moveTo(p, PhantomAdapter.loc(p.getX() + dx, p.getY() + dy, p.getZ()));
+        bot.lastForcedProbeTs = now;
+
+        _log.debug("[PHANTOM][forced-probe-start] actor={} objId={} reason={} started={} from=({}, {}, {}) to=({}, {}, {}) intention={} isMoving={} blockedFlags={}",
+                p.getName(), p.getObjectId(), reason, started,
+                before.x, before.y, before.z,
+                p.getX() + dx, p.getY() + dy, p.getZ(),
+                PhantomAdapter.currentIntention(p), PhantomAdapter.isMoving(p), PhantomAdapter.blockedStateSummary(p));
+    }
+
+    private void updateProbeProgress(PhantomBot bot, TickSnapshot before, TickSnapshot afterState) {
+        Player p = bot.actor;
+        if (p == null)
+            return;
+        if (!PhantomConfig.DEBUG || !debugTracked.contains(p.getObjectId()))
+            return;
+        if (bot.forcedProbeTicksLeft <= 0)
+            return;
+
+        bot.forcedProbeTicksLeft--;
+        _log.debug("[PHANTOM][forced-probe-tick] actor={} objId={} ticksLeft={} reason={} coordsBeforeTick=({}, {}, {}) coordsAfterTick=({}, {}, {}) intention={} isMoving={} moveTaskStartedCheck={} blockedFlags={}",
+                p.getName(), p.getObjectId(), bot.forcedProbeTicksLeft, bot.forcedProbeReason,
+                before.x, before.y, before.z,
+                afterState.x, afterState.y, afterState.z,
+                PhantomAdapter.currentIntention(p), PhantomAdapter.isMoving(p),
+                (before.chebyshevDistance(afterState) > 0), PhantomAdapter.blockedStateSummary(p));
+
+        if (bot.forcedProbeTicksLeft == 0) {
+            int moved = Math.max(Math.abs(afterState.x - bot.forcedProbeStartX), Math.abs(afterState.y - bot.forcedProbeStartY));
+            if (moved <= 3)
+                _log.warn("phantom direct move failed: coords unchanged after forced move probe actor={} objId={} start=({}, {}, {}) end=({}, {}, {}) intention={} isMoving={} blockedFlags={}",
+                        p.getName(), p.getObjectId(),
+                        bot.forcedProbeStartX, bot.forcedProbeStartY, bot.forcedProbeStartZ,
+                        afterState.x, afterState.y, afterState.z,
+                        PhantomAdapter.currentIntention(p), PhantomAdapter.isMoving(p), PhantomAdapter.blockedStateSummary(p));
+            else
+                _log.debug("[PHANTOM][forced-probe-ok] actor={} objId={} moved={} start=({}, {}, {}) end=({}, {}, {}) intention={} isMoving={}",
+                        p.getName(), p.getObjectId(), moved,
+                        bot.forcedProbeStartX, bot.forcedProbeStartY, bot.forcedProbeStartZ,
+                        afterState.x, afterState.y, afterState.z,
+                        PhantomAdapter.currentIntention(p), PhantomAdapter.isMoving(p));
+        }
     }
 
     private void requeue(PhantomBot bot) {
@@ -332,10 +401,8 @@ public final class PhantomManager {
     }
 
     private void rebalanceActiveCap() {
-        // держим active примерно около ACTIVE_CAP
         int cap = PhantomConfig.ACTIVE_CAP;
 
-        // если активных мало — поднимаем из idle/sleep
         while (active.size() < cap) {
             PhantomBot b = idle.poll();
             if (b == null) b = sleep.poll();
@@ -344,7 +411,6 @@ public final class PhantomManager {
             active.add(b);
         }
 
-        // если активных много — скидываем “лишних” в idle
         while (active.size() > cap) {
             PhantomBot b = active.poll();
             if (b == null) break;

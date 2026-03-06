@@ -25,12 +25,14 @@ public class MoveToTargetAction implements PhantomAction {
 
     @Override
     public void run(PhantomContext ctx) {
+        boolean started = PhantomAdapter.moveTo(ctx.actor, PhantomAdapter.location(ctx.target));
         if (_log.isDebugEnabled() && PhantomConfig.DEBUG)
-            _log.debug("[PHANTOM][MoveToTargetAction] actor={} objectId={} target={} dist={}",
+            _log.debug("[PHANTOM][MoveToTargetAction] actor={} objectId={} target={} dist={} started={} snapshot={}",
                     ctx.actor != null ? ctx.actor.getName() : "null",
                     ctx.actor != null ? ctx.actor.getObjectId() : 0,
                     ctx.target != null ? (ctx.target.getName() + "(" + ctx.target.getObjectId() + ")") : "null",
-                    ctx.target != null ? String.format("%.2f", PhantomAdapter.dist3D(ctx.actor, ctx.target)) : "n/a");
-		PhantomAdapter.moveTo(ctx.actor, PhantomAdapter.location(ctx.target));
+                    ctx.target != null ? String.format("%.2f", PhantomAdapter.dist3D(ctx.actor, ctx.target)) : "n/a",
+                    started,
+                    PhantomAdapter.movementDebugSnapshot(ctx.actor));
     }
 }
